@@ -1,6 +1,13 @@
+using HealthingHand.Data;
+using HealthingHand.Data.Persistence;
 using HealthingHand.Web.Components;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddDbContextFactory<AppDbContext>(options => options.UseSqlite(builder.Configuration.GetConnectionString("AppDb")));
+
+builder.Services.AddHealthingHandData(builder.Configuration.GetConnectionString("AppDb")!);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
@@ -17,7 +24,6 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
 
 app.UseAntiforgery();
 

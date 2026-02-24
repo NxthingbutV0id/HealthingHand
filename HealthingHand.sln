@@ -2,6 +2,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HealthingHand.Web", "HealthingHand.Web\HealthingHand.Web.csproj", "{EE6F0E28-DC1B-4CC2-B7EC-BFC2BF593161}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HealthingHand.Data", "HealthingHand.Data\HealthingHand.Data.csproj", "{5193AC32-E42E-42A2-964D-32730557DD7E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +14,9 @@ Global
 		{EE6F0E28-DC1B-4CC2-B7EC-BFC2BF593161}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EE6F0E28-DC1B-4CC2-B7EC-BFC2BF593161}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EE6F0E28-DC1B-4CC2-B7EC-BFC2BF593161}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5193AC32-E42E-42A2-964D-32730557DD7E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5193AC32-E42E-42A2-964D-32730557DD7E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5193AC32-E42E-42A2-964D-32730557DD7E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5193AC32-E42E-42A2-964D-32730557DD7E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
