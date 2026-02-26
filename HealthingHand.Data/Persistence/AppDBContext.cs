@@ -10,9 +10,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder);
+        
         modelBuilder.Entity<SleepEntry>()
             .HasOne(s => s.User)
             .WithMany()
             .HasForeignKey(s => s.UserId);
+        
+        modelBuilder.Entity<User>(e =>
+        {
+            e.Property(u => u.Email).IsRequired();
+            e.HasIndex(u => u.Email).IsUnique();
+        });
     }
 }
