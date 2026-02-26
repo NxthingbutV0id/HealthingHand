@@ -17,20 +17,14 @@ namespace HealthingHand.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.3");
 
-            modelBuilder.Entity("HealthingHand.Data.Models.SleepEntry", b =>
+            modelBuilder.Entity("HealthingHand.Data.Entries.SleepEntry", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("Date")
-                        .HasColumnType("TEXT");
-
-                    b.Property<TimeSpan>("Duration")
-                        .HasColumnType("TEXT");
-
-                    b.Property<byte>("Quality")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("TEXT");
@@ -42,7 +36,7 @@ namespace HealthingHand.Data.Migrations
                     b.ToTable("SleepEntries");
                 });
 
-            modelBuilder.Entity("HealthingHand.Data.Models.User", b =>
+            modelBuilder.Entity("HealthingHand.Data.Entries.User", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -61,9 +55,9 @@ namespace HealthingHand.Data.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("HealthingHand.Data.Models.SleepEntry", b =>
+            modelBuilder.Entity("HealthingHand.Data.Entries.SleepEntry", b =>
                 {
-                    b.HasOne("HealthingHand.Data.Models.User", "User")
+                    b.HasOne("HealthingHand.Data.Entries.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
