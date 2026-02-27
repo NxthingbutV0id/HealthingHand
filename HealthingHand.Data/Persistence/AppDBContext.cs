@@ -5,8 +5,12 @@ namespace HealthingHand.Data.Persistence;
 
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
-    public DbSet<User> Users => Set<User>();
+    public DbSet<UserEntry> Users => Set<UserEntry>();
     public DbSet<SleepEntry> SleepEntries => Set<SleepEntry>();
+    public DbSet<DietEntry> DietEntries => Set<DietEntry>();
+    public DbSet<MealItemEntry> MealItems => Set<MealItemEntry>();
+    public DbSet<WorkoutEntry> WorkoutEntries => Set<WorkoutEntry>();
+    public DbSet<ExerciseEntry> ExerciseEntries => Set<ExerciseEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -17,10 +21,22 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .WithMany()
             .HasForeignKey(s => s.UserId);
         
-        modelBuilder.Entity<User>(e =>
+        modelBuilder.Entity<SleepEntry>()
+            .HasIndex(s => new { s.UserId, s.SleepDate })
+            .IsUnique();
+        
+        modelBuilder.Entity<UserEntry>(e =>
         {
             e.Property(u => u.Email).IsRequired();
             e.HasIndex(u => u.Email).IsUnique();
         });
+        
+        modelBuilder.Entity<DietEntry>()
+            .HasMany(m => m.Items)
+            .WithOne(i => i.DietEntry)
+            .HasForeignKey(i => i.DietEntryId)
+            .OnDelete(DeleteBehavior.Cascade);
+        
+        
     }
 }
