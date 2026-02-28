@@ -1,7 +1,7 @@
 namespace HealthingHand.Data.Stores;
 
 public interface IStore<TE, in TK>
-     where TE : class
+    where TE : class
 {
     /// <summary>
     /// Get a single entry by its unique identifier from the database.

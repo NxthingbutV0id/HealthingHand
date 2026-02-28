@@ -1,6 +1,11 @@
 namespace HealthingHand.Web.Services;
 
-public class DietService
+public interface IDietService
 {
-    
+    //TODO
+}
+
+public class DietService : IDietService
+{
+    //TODO
 }

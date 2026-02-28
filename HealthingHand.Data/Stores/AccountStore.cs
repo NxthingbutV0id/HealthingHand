@@ -1,31 +1,49 @@
 using HealthingHand.Data.Entries;
+using HealthingHand.Data.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace HealthingHand.Data.Stores;
 
 public interface IAccountStore : IStore<UserEntry, Guid>
 {
-    
+    Task<UserEntry?> GetByEmailAsync(string email);
 }
 
-public class AccountStore : IAccountStore
+public class AccountStore(IDbContextFactory<AppDbContext> factory) : IAccountStore
 {
-    public Task<UserEntry?> GetAsync(Guid id)
+    public async Task<UserEntry?> GetAsync(Guid id)
     {
-        throw new NotImplementedException();
+        await using var db = await factory.CreateDbContextAsync();
+        return await db.Users.FindAsync(id);
     }
 
-    public Task AddAsync(UserEntry entry)
+    public async Task AddAsync(UserEntry entry)
     {
-        throw new NotImplementedException();
+        await using var db = await factory.CreateDbContextAsync();
+        db.Users.Add(entry);
+        await db.SaveChangesAsync();
     }
 
-    public Task UpdateAsync(UserEntry entry)
+    public async Task UpdateAsync(UserEntry entry)
     {
-        throw new NotImplementedException();
+        await using var db = await factory.CreateDbContextAsync();
+        db.Users.Update(entry);
+        await db.SaveChangesAsync();
     }
 
-    public Task DeleteAsync(Guid id)
+    public async Task DeleteAsync(Guid id)
     {
-        throw new NotImplementedException();
+        await using var db = await factory.CreateDbContextAsync();
+        var entry = await db.Users.FindAsync(id);
+        if (entry is null) return;
+        db.Users.Remove(entry);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<UserEntry?> GetByEmailAsync(string email)
+    {
+        await using var db = await factory.CreateDbContextAsync();
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        return await db.Users.SingleOrDefaultAsync(u => u.Email.Equals(normalizedEmail, StringComparison.CurrentCultureIgnoreCase));
     }
 }

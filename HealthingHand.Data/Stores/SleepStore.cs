@@ -7,19 +7,16 @@ namespace HealthingHand.Data.Stores;
 
 public interface ISleepStore : IStore<SleepEntry, int>
 {
-    Task<List<SleepEntry>> ListForUserAsync(Guid userId, DateOnly from, DateOnly to, CancellationToken ct = default);
-    Task<SleepEntry?> GetForDateAsync(Guid userId, DateOnly date, CancellationToken ct = default);
+    Task<List<SleepEntry>> ListForUserAsync(Guid userId, DateOnly from, DateOnly to);
+    Task<SleepEntry?> GetForDateAsync(Guid userId, DateOnly date);
 }
 
 public class SleepStore(IDbContextFactory<AppDbContext> factory) : ISleepStore
 {
-    public Task<SleepEntry?> GetAsync(int id)
+    public async Task<SleepEntry?> GetAsync(int id)
     {
-        return Task.Run(async () =>
-        {
-            await using var db = await factory.CreateDbContextAsync();
-            return await db.SleepEntries.FindAsync(id);
-        });
+        await using var db = await factory.CreateDbContextAsync();
+        return await db.SleepEntries.FindAsync(id);
     }
 
     public async Task AddAsync(SleepEntry entry)
@@ -29,30 +26,27 @@ public class SleepStore(IDbContextFactory<AppDbContext> factory) : ISleepStore
         await db.SaveChangesAsync();
     }
 
-    public Task UpdateAsync(SleepEntry entry)
+    public async Task UpdateAsync(SleepEntry entry)
     {
-        return Task.Run(async () =>
-        {
-            await using var db = await factory.CreateDbContextAsync();
-            db.SleepEntries.Update(entry);
-            await db.SaveChangesAsync();
-        });
+        await using var db = await factory.CreateDbContextAsync();
+        db.SleepEntries.Update(entry);
+        await db.SaveChangesAsync();
     }
 
-    public async Task<List<SleepEntry>> ListForUserAsync(Guid userId, DateOnly from, DateOnly to, CancellationToken ct = default)
+    public async Task<List<SleepEntry>> ListForUserAsync(Guid userId, DateOnly from, DateOnly to)
     {
-        await using var db = await factory.CreateDbContextAsync(ct);
+        await using var db = await factory.CreateDbContextAsync();
 
         return await db.SleepEntries
             .Where(s => s.UserId == userId && s.SleepDate >= from && s.SleepDate <= to)
             .OrderByDescending(s => s.SleepDate)
-            .ToListAsync(ct);
+            .ToListAsync();
     }
     
-    public async Task<SleepEntry?> GetForDateAsync(Guid userId, DateOnly date, CancellationToken ct = default)
+    public async Task<SleepEntry?> GetForDateAsync(Guid userId, DateOnly date)
     {
-        await using var db = await factory.CreateDbContextAsync(ct);
-        return await db.SleepEntries.SingleOrDefaultAsync(s => s.UserId == userId && s.SleepDate == date, ct);
+        await using var db = await factory.CreateDbContextAsync();
+        return await db.SleepEntries.SingleOrDefaultAsync(s => s.UserId == userId && s.SleepDate == date);
     }
 
     public async Task DeleteAsync(int id)

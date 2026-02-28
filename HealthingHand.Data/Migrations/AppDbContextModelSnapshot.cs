@@ -17,13 +17,21 @@ namespace HealthingHand.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.3");
 
-            modelBuilder.Entity("HealthingHand.Data.Entries.SleepEntry", b =>
+            modelBuilder.Entity("HealthingHand.Data.Entries.DietEntry", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateOnly>("Date")
+                    b.Property<DateTime>("EatenAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MealType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("UserId")
@@ -33,13 +41,126 @@ namespace HealthingHand.Data.Migrations
 
                     b.HasIndex("UserId");
 
+                    b.ToTable("DietEntries");
+                });
+
+            modelBuilder.Entity("HealthingHand.Data.Entries.ExerciseEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<float>("DistanceKm")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Reps")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Sets")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<TimeSpan>("Time")
+                        .HasColumnType("TEXT");
+
+                    b.Property<float>("WeightKg")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("WorkoutId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkoutId");
+
+                    b.ToTable("ExerciseEntries");
+                });
+
+            modelBuilder.Entity("HealthingHand.Data.Entries.MealItemEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Calories")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<float>("CarbsGrams")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("DietEntryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<float>("FatGrams")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<float>("ProteinGrams")
+                        .HasColumnType("REAL");
+
+                    b.Property<float>("Quantity")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DietEntryId");
+
+                    b.ToTable("MealItems");
+                });
+
+            modelBuilder.Entity("HealthingHand.Data.Entries.SleepEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("EndTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("SleepDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte>("SleepQuality")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("StartTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "SleepDate")
+                        .IsUnique();
+
                     b.ToTable("SleepEntries");
                 });
 
-            modelBuilder.Entity("HealthingHand.Data.Entries.User", b =>
+            modelBuilder.Entity("HealthingHand.Data.Entries.UserEntry", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte>("Age")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreationDate")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("DisplayName")
@@ -50,6 +171,22 @@ namespace HealthingHand.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<float>("HeightM")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("LastOnline")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Sex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<float>("WeightKg")
+                        .HasColumnType("REAL");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
@@ -58,15 +195,99 @@ namespace HealthingHand.Data.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("HealthingHand.Data.Entries.SleepEntry", b =>
+            modelBuilder.Entity("HealthingHand.Data.Entries.WorkoutEntry", b =>
                 {
-                    b.HasOne("HealthingHand.Data.Entries.User", "User")
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DurationMinutes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WorkoutType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "StartedAt");
+
+                    b.ToTable("WorkoutEntries");
+                });
+
+            modelBuilder.Entity("HealthingHand.Data.Entries.DietEntry", b =>
+                {
+                    b.HasOne("HealthingHand.Data.Entries.UserEntry", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("HealthingHand.Data.Entries.ExerciseEntry", b =>
+                {
+                    b.HasOne("HealthingHand.Data.Entries.WorkoutEntry", "WorkoutEntry")
+                        .WithMany("Exercises")
+                        .HasForeignKey("WorkoutId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("WorkoutEntry");
+                });
+
+            modelBuilder.Entity("HealthingHand.Data.Entries.MealItemEntry", b =>
+                {
+                    b.HasOne("HealthingHand.Data.Entries.DietEntry", "DietEntry")
+                        .WithMany("Items")
+                        .HasForeignKey("DietEntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DietEntry");
+                });
+
+            modelBuilder.Entity("HealthingHand.Data.Entries.SleepEntry", b =>
+                {
+                    b.HasOne("HealthingHand.Data.Entries.UserEntry", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("HealthingHand.Data.Entries.WorkoutEntry", b =>
+                {
+                    b.HasOne("HealthingHand.Data.Entries.UserEntry", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("HealthingHand.Data.Entries.DietEntry", b =>
+                {
+                    b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("HealthingHand.Data.Entries.WorkoutEntry", b =>
+                {
+                    b.Navigation("Exercises");
                 });
 #pragma warning restore 612, 618
         }

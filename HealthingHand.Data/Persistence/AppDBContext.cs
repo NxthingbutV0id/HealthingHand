@@ -16,6 +16,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     {
         base.OnModelCreating(modelBuilder);
         
+        // Create the Users table with a unique index on the Email column
+        modelBuilder.Entity<UserEntry>(e =>
+        {
+            e.Property(u => u.Email).IsRequired();
+            e.HasIndex(u => u.Email).IsUnique();
+        });
+        
         modelBuilder.Entity<SleepEntry>()
             .HasOne(s => s.User)
             .WithMany()
@@ -25,18 +32,37 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(s => new { s.UserId, s.SleepDate })
             .IsUnique();
         
-        modelBuilder.Entity<UserEntry>(e =>
-        {
-            e.Property(u => u.Email).IsRequired();
-            e.HasIndex(u => u.Email).IsUnique();
-        });
-        
         modelBuilder.Entity<DietEntry>()
             .HasMany(m => m.Items)
             .WithOne(i => i.DietEntry)
             .HasForeignKey(i => i.DietEntryId)
             .OnDelete(DeleteBehavior.Cascade);
         
-        
+        modelBuilder.Entity<WorkoutEntry>()
+            .HasOne(w => w.User)
+            .WithMany()
+            .HasForeignKey(w => w.UserId);
+
+        modelBuilder.Entity<WorkoutEntry>()
+            .HasMany(w => w.Exercises)
+            .WithOne(e => e.WorkoutEntry)
+            .HasForeignKey(e => e.WorkoutId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Helpful index for “my workouts ordered by date”
+        modelBuilder.Entity<WorkoutEntry>()
+            .HasIndex(w => new { w.UserId, w.StartedAt });
+
+        // Optional “required” fields
+        modelBuilder.Entity<WorkoutEntry>(e =>
+        {
+            e.Property(w => w.WorkoutType).IsRequired();
+            e.Property(w => w.StartedAt).IsRequired();
+        });
+
+        modelBuilder.Entity<ExerciseEntry>(e =>
+        {
+            e.Property(x => x.Name).IsRequired();
+        });
     }
 }

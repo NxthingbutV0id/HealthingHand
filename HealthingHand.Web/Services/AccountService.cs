@@ -1,6 +1,11 @@
 namespace HealthingHand.Web.Services;
 
-public class AccountService
+public interface IAccountService
 {
-    
+    //TODO
+}
+
+public class AccountService : IAccountService
+{
+    //TODO
 }

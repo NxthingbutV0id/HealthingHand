@@ -6,10 +6,10 @@ namespace HealthingHand.Data.Stores;
 
 public interface IDietStore : IStore<DietEntry, int>
 {
-    Task<DietEntry?> GetWithItemsAsync(int id, CancellationToken ct = default);
-    Task<int> AddWithItemsAsync(DietEntry meal, IEnumerable<MealItemEntry> items, CancellationToken ct = default);
-    Task<List<DietEntry>> ListForUserAsync(Guid userId, DateTime from, DateTime to, bool includeItems = false, CancellationToken ct = default);
-    Task UpdateWithItemsAsync(DietEntry updatedMeal, IEnumerable<MealItemEntry> newItems, CancellationToken ct = default);
+    Task<DietEntry?> GetWithItemsAsync(int id);
+    Task<int> AddWithItemsAsync(DietEntry meal, IEnumerable<MealItemEntry> items);
+    Task<List<DietEntry>> ListForUserAsync(Guid userId, DateTime from, DateTime to, bool includeItems = false);
+    Task UpdateWithItemsAsync(DietEntry updatedMeal, IEnumerable<MealItemEntry> newItems);
 }
 
 public class DietStore(IDbContextFactory<AppDbContext> factory) : IDietStore
@@ -54,29 +54,25 @@ public class DietStore(IDbContextFactory<AppDbContext> factory) : IDietStore
         db.DietEntries.Remove(meal);
         await db.SaveChangesAsync();
     }
-
-    // -------------------------
-    // Diet-specific methods
-    // -------------------------
-
+    
     /// <summary>
     /// Returns a meal including its items.
     /// </summary>
-    public async Task<DietEntry?> GetWithItemsAsync(int id, CancellationToken ct = default)
+    public async Task<DietEntry?> GetWithItemsAsync(int id)
     {
-        await using var db = await factory.CreateDbContextAsync(ct);
+        await using var db = await factory.CreateDbContextAsync();
 
         return await db.DietEntries
             .Include(m => m.Items)
-            .SingleOrDefaultAsync(m => m.Id == id, ct);
+            .SingleOrDefaultAsync(m => m.Id == id);
     }
 
     /// <summary>
     /// Creates a meal and its items in one call.
     /// </summary>
-    public async Task<int> AddWithItemsAsync(DietEntry meal, IEnumerable<MealItemEntry> items, CancellationToken ct = default)
+    public async Task<int> AddWithItemsAsync(DietEntry meal, IEnumerable<MealItemEntry> items)
     {
-        await using var db = await factory.CreateDbContextAsync(ct);
+        await using var db = await factory.CreateDbContextAsync();
 
         // Ensure navigation + FK are set consistently
         var itemList = items.ToList();
@@ -89,7 +85,7 @@ public class DietStore(IDbContextFactory<AppDbContext> factory) : IDietStore
         meal.Items = itemList;
 
         db.DietEntries.Add(meal);
-        await db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync();
 
         return meal.Id;
     }
@@ -101,10 +97,9 @@ public class DietStore(IDbContextFactory<AppDbContext> factory) : IDietStore
         Guid userId,
         DateTime from,
         DateTime to,
-        bool includeItems = false,
-        CancellationToken ct = default)
+        bool includeItems = false)
     {
-        await using var db = await factory.CreateDbContextAsync(ct);
+        await using var db = await factory.CreateDbContextAsync();
 
         IQueryable<DietEntry> query = db.DietEntries;
 
@@ -114,19 +109,19 @@ public class DietStore(IDbContextFactory<AppDbContext> factory) : IDietStore
         return await query
             .Where(m => m.UserId == userId && m.EatenAt >= from && m.EatenAt <= to)
             .OrderByDescending(m => m.EatenAt)
-            .ToListAsync(ct);
+            .ToListAsync();
     }
 
     /// <summary>
     /// Updates the meal scalars and replaces its items wholesale (simple + correct for v1).
     /// </summary>
-    public async Task UpdateWithItemsAsync(DietEntry updatedMeal, IEnumerable<MealItemEntry> newItems, CancellationToken ct = default)
+    public async Task UpdateWithItemsAsync(DietEntry updatedMeal, IEnumerable<MealItemEntry> newItems)
     {
-        await using var db = await factory.CreateDbContextAsync(ct);
+        await using var db = await factory.CreateDbContextAsync();
 
         var existing = await db.DietEntries
             .Include(m => m.Items)
-            .SingleOrDefaultAsync(m => m.Id == updatedMeal.Id, ct);
+            .SingleOrDefaultAsync(m => m.Id == updatedMeal.Id);
 
         if (existing is null)
             throw new InvalidOperationException($"DietEntry {updatedMeal.Id} not found.");
@@ -149,6 +144,6 @@ public class DietStore(IDbContextFactory<AppDbContext> factory) : IDietStore
 
         existing.Items = itemList;
 
-        await db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync();
     }
 }

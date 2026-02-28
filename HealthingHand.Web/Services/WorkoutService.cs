@@ -1,6 +1,11 @@
 namespace HealthingHand.Web.Services;
 
-public class WorkoutService
+public interface IWorkoutService
 {
-    
+    //TODO
+}
+
+public class WorkoutService : IWorkoutService
+{
+    //TODO
 }

@@ -1,6 +1,11 @@
 namespace HealthingHand.Web.Services;
 
-public class SleepService
+public interface ISleepService
 {
-    
+    //TODO
+}
+
+public class SleepService : ISleepService
+{
+    //TODO
 }
