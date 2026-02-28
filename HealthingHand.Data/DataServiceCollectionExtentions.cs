@@ -13,7 +13,7 @@ public static class DataServiceCollectionExtensions
     {
         services.AddDbContextFactory<AppDbContext>(o => o.UseSqlite(connectionString));
 
-        services.AddScoped<IStore<UserEntry, Guid>, AccountStore>();
+        services.AddScoped<IAccountStore, AccountStore>();
         services.AddScoped<ISleepStore, SleepStore>();
         services.AddScoped<IDietStore, DietStore>();
         services.AddScoped<IWorkoutStore, WorkoutStore>();

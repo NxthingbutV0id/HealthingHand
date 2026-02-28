@@ -1,10 +1,13 @@
 using HealthingHand.Data;
+using HealthingHand.Data.Entries;
 using HealthingHand.Data.Persistence;
+using HealthingHand.Data.Stores;
 using HealthingHand.Web.Components;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using HealthingHand.Web.Endpoints;
+using HealthingHand.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,6 +29,14 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddScoped<IStore<SleepEntry, int>, SleepStore>();
+builder.Services.AddScoped<IStore<DietEntry, int>, DietStore>();
+builder.Services.AddScoped<IStore<WorkoutEntry, int>, WorkoutStore>();
+
+// Account will be similar:
+builder.Services.AddScoped<IAccountStore, AccountStore>();
+builder.Services.AddScoped<AccountService>();
 
 var app = builder.Build();
 

@@ -4,23 +4,33 @@ using Microsoft.EntityFrameworkCore;
 
 namespace HealthingHand.Data;
 
+public interface IDatabase
+{
+    IAccountStore Account { get; }
+    ISleepStore Sleep { get; }
+    IDietStore Diet { get; }
+    IWorkoutStore Workout { get; }
+
+    Task InitializeAsync();
+}
+
 public class Database(
     IDbContextFactory<AppDbContext> dbContext,
-    AccountStore account,
-    SleepStore sleep,
-    WorkoutStore workout,
-    DietStore diet)
+    IAccountStore account,
+    ISleepStore sleep,
+    IWorkoutStore workout,
+    IDietStore diet)
     : IDatabase
 {
-    public AccountStore Account { get; } = account;
-    public SleepStore Sleep { get; } = sleep;
-    public DietStore Diet { get; } = diet;
-    public WorkoutStore Workout { get; } = workout;
+    public IAccountStore Account { get; } = account;
+    public ISleepStore Sleep { get; } = sleep;
+    public IDietStore Diet { get; } = diet;
+    public IWorkoutStore Workout { get; } = workout;
 
-    public async Task InitializeAsync(CancellationToken ct = default)
+    public async Task InitializeAsync()
     {
-        await using var db = await dbContext.CreateDbContextAsync(ct);
-        await db.Database.MigrateAsync(ct);
+        await using var db = await dbContext.CreateDbContextAsync();
+        await db.Database.MigrateAsync();
     }
 
 }

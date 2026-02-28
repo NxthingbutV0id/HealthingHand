@@ -4,7 +4,15 @@ using Microsoft.EntityFrameworkCore;
 
 namespace HealthingHand.Data.Stores;
 
-public class DietStore(IDbContextFactory<AppDbContext> factory) : IStore<DietEntry, int>
+public interface IDietStore : IStore<DietEntry, int>
+{
+    Task<DietEntry?> GetWithItemsAsync(int id, CancellationToken ct = default);
+    Task<int> AddWithItemsAsync(DietEntry meal, IEnumerable<MealItemEntry> items, CancellationToken ct = default);
+    Task<List<DietEntry>> ListForUserAsync(Guid userId, DateTime from, DateTime to, bool includeItems = false, CancellationToken ct = default);
+    Task UpdateWithItemsAsync(DietEntry updatedMeal, IEnumerable<MealItemEntry> newItems, CancellationToken ct = default);
+}
+
+public class DietStore(IDbContextFactory<AppDbContext> factory) : IDietStore
 {
     public async Task<DietEntry?> GetAsync(int id)
     {

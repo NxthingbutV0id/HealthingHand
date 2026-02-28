@@ -5,7 +5,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace HealthingHand.Data.Stores;
 
-public class SleepStore(IDbContextFactory<AppDbContext> factory) : IStore<SleepEntry, int>
+public interface ISleepStore : IStore<SleepEntry, int>
+{
+    Task<List<SleepEntry>> ListForUserAsync(Guid userId, DateOnly from, DateOnly to, CancellationToken ct = default);
+    Task<SleepEntry?> GetForDateAsync(Guid userId, DateOnly date, CancellationToken ct = default);
+}
+
+public class SleepStore(IDbContextFactory<AppDbContext> factory) : ISleepStore
 {
     public Task<SleepEntry?> GetAsync(int id)
     {
