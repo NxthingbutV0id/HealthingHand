@@ -44,6 +44,6 @@ public class AccountStore(IDbContextFactory<AppDbContext> factory) : IAccountSto
     {
         await using var db = await factory.CreateDbContextAsync();
         var normalizedEmail = email.Trim().ToLowerInvariant();
-        return await db.Users.SingleOrDefaultAsync(u => u.Email.Equals(normalizedEmail, StringComparison.CurrentCultureIgnoreCase));
+        return await db.Users.SingleOrDefaultAsync(u => u.Email == normalizedEmail);
     }
 }

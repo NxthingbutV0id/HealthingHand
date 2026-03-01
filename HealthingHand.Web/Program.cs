@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace HealthingHand.Web;
 
-internal class Program // Personally, I prefer an explicit main method - Christian Torres
+internal class Program // Personally, I prefer an explicit main method - CT
 {
     public static void Main(string[] args)
     {
