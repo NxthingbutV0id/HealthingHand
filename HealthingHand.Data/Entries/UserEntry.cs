@@ -1,5 +1,10 @@
 namespace HealthingHand.Data.Entries;
 
+public enum Sex
+{
+    Undefined, Male, Female
+}
+
 public class UserEntry
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -9,7 +14,7 @@ public class UserEntry
     public DateTime CreationDate { get; set; } = DateTime.UtcNow;
     public DateTime LastOnline { get; set; } = DateTime.UtcNow;
     public byte Age { get; set; }
-    public bool Sex { get; set; }
+    public Sex Sex { get; set; } = Sex.Undefined;
     public float HeightM { get; set; }
-    public float WeightKg { get; set; }
+    public float WeightKg { get; set; } //TODO: Shouldn't we keep track of weight history instead of just current weight?
 }

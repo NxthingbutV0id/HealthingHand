@@ -1,5 +1,19 @@
 namespace HealthingHand.Data.Entries;
 
+public enum WorkoutType
+{
+    Undefined,
+    Cardio,
+    StrengthTraining,
+    Flexibility,
+    Balance,
+    HighIntensityIntervalTraining,
+    Yoga,
+    Pilates,
+    CrossFit,
+    Other
+}
+
 public class WorkoutEntry
 {
     public int Id { get; set; }
@@ -8,6 +22,6 @@ public class WorkoutEntry
     public List<ExerciseEntry> Exercises { get; set; } = [];
     public DateTime StartedAt { get; set; }
     public int DurationMinutes { get; set; }
-    public string WorkoutType { get; set; } = "";
+    public WorkoutType WorkoutType { get; set; } = WorkoutType.Undefined;
     public string Notes { get; set; } = "";
 }

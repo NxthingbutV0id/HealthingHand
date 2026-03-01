@@ -11,17 +11,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<MealItemEntry> MealItems => Set<MealItemEntry>();
     public DbSet<WorkoutEntry> WorkoutEntries => Set<WorkoutEntry>();
     public DbSet<ExerciseEntry> ExerciseEntries => Set<ExerciseEntry>();
+    public DbSet<WeightEntry> WeightEntries => Set<WeightEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
         
-        // Create the Users table with a unique index on the Email column
         modelBuilder.Entity<UserEntry>(e =>
         {
             e.Property(u => u.Email).IsRequired();
             e.HasIndex(u => u.Email).IsUnique();
         });
+        
+        modelBuilder.Entity<UserEntry>()
+            .Property(u => u.Sex)
+            .HasConversion<string>();
         
         modelBuilder.Entity<SleepEntry>()
             .HasOne(s => s.User)
@@ -42,6 +46,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(w => w.User)
             .WithMany()
             .HasForeignKey(w => w.UserId);
+        
+        modelBuilder.Entity<WorkoutEntry>()
+            .Property(w => w.WorkoutType)
+            .HasConversion<string>();
 
         modelBuilder.Entity<WorkoutEntry>()
             .HasMany(w => w.Exercises)
@@ -64,5 +72,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.Property(x => x.Name).IsRequired();
         });
+        
+        modelBuilder.Entity<WeightEntry>()
+            .HasOne(w => w.User)
+            .WithMany()
+            .HasForeignKey(w => w.UserId);
+
+        modelBuilder.Entity<WeightEntry>()
+            .HasIndex(w => new { w.UserId, w.Date })
+            .IsUnique();
     }
 }

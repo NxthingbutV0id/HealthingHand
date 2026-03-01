@@ -16,12 +16,12 @@ internal class Program // Personally, I prefer an explicit main method - Christi
     {
         var builder = WebApplication.CreateBuilder(args);
 
-        builder.Services.AddDbContextFactory<AppDbContext>(options =>
-            options.UseSqlite(builder.Configuration.GetConnectionString("AppDb")));
+        var cs = builder.Configuration.GetConnectionString("AppDb")!;
 
-        builder.Services.AddHealthingHandData(builder.Configuration.GetConnectionString("AppDb")!);
+        // Data layer (factory + stores + IDatabase)
+        builder.Services.AddHealthingHandData(cs);
 
-        // Add services to the container.
+        // Web / UI
         builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
         builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
@@ -34,37 +34,24 @@ internal class Program // Personally, I prefer an explicit main method - Christi
         builder.Services.AddCascadingAuthenticationState();
         builder.Services.AddHttpContextAccessor();
 
-        builder.Services.AddScoped<ISleepStore, SleepStore>();
-        builder.Services.AddScoped<IDietStore, DietStore>();
-        builder.Services.AddScoped<IWorkoutStore, WorkoutStore>();
-        builder.Services.AddScoped<IAccountStore, AccountStore>();
-        
+        // App services
         builder.Services.AddScoped<IAccountService, AccountService>();
         builder.Services.AddScoped<IWorkoutService, WorkoutService>();
         builder.Services.AddScoped<IDietService, DietService>();
         builder.Services.AddScoped<ISleepService, SleepService>();
 
-        //builder.Services.AddScoped<UserSession>(); //TODO: Create UserSession class
-
         var app = builder.Build();
-        
-        // Apply migrations automatically (dev-friendly)
+
+        // Auto-migrate
         using (var scope = app.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
+            using var db = factory.CreateDbContext();
             db.Database.Migrate();
         }
 
         app.UseAuthentication();
         app.UseAuthorization();
-
-        // Configure the HTTP request pipeline.
-        if (!app.Environment.IsDevelopment())
-        {
-            app.UseExceptionHandler("/Error", createScopeForErrors: true);
-            // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-            app.UseHsts();
-        }
 
         app.UseHttpsRedirection();
         app.UseAntiforgery();

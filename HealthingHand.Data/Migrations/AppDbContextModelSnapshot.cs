@@ -181,8 +181,9 @@ namespace HealthingHand.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("Sex")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("Sex")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<float>("WeightKg")
                         .HasColumnType("REAL");
@@ -193,6 +194,29 @@ namespace HealthingHand.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("HealthingHand.Data.Entries.WeightEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<float>("WeightKg")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Date")
+                        .IsUnique();
+
+                    b.ToTable("WeightEntries");
                 });
 
             modelBuilder.Entity("HealthingHand.Data.Entries.WorkoutEntry", b =>
@@ -259,6 +283,17 @@ namespace HealthingHand.Data.Migrations
                 });
 
             modelBuilder.Entity("HealthingHand.Data.Entries.SleepEntry", b =>
+                {
+                    b.HasOne("HealthingHand.Data.Entries.UserEntry", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("HealthingHand.Data.Entries.WeightEntry", b =>
                 {
                     b.HasOne("HealthingHand.Data.Entries.UserEntry", "User")
                         .WithMany()

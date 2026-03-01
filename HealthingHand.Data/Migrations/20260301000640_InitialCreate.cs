@@ -6,96 +6,30 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace HealthingHand.Data.Migrations
 {
     /// <inheritdoc />
-    public partial class AddWorkoutExerciseRelations : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_SleepEntries_UserId",
-                table: "SleepEntries");
-
-            migrationBuilder.RenameColumn(
-                name: "Date",
-                table: "SleepEntries",
-                newName: "StartTime");
-
-            migrationBuilder.AddColumn<byte>(
-                name: "Age",
-                table: "Users",
-                type: "INTEGER",
-                nullable: false,
-                defaultValue: (byte)0);
-
-            migrationBuilder.AddColumn<DateTime>(
-                name: "CreationDate",
-                table: "Users",
-                type: "TEXT",
-                nullable: false,
-                defaultValue: new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified));
-
-            migrationBuilder.AddColumn<float>(
-                name: "HeightM",
-                table: "Users",
-                type: "REAL",
-                nullable: false,
-                defaultValue: 0f);
-
-            migrationBuilder.AddColumn<DateTime>(
-                name: "LastOnline",
-                table: "Users",
-                type: "TEXT",
-                nullable: false,
-                defaultValue: new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified));
-
-            migrationBuilder.AddColumn<string>(
-                name: "PasswordHash",
-                table: "Users",
-                type: "TEXT",
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.AddColumn<bool>(
-                name: "Sex",
-                table: "Users",
-                type: "INTEGER",
-                nullable: false,
-                defaultValue: false);
-
-            migrationBuilder.AddColumn<float>(
-                name: "WeightKg",
-                table: "Users",
-                type: "REAL",
-                nullable: false,
-                defaultValue: 0f);
-
-            migrationBuilder.AddColumn<DateTime>(
-                name: "EndTime",
-                table: "SleepEntries",
-                type: "TEXT",
-                nullable: false,
-                defaultValue: new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified));
-
-            migrationBuilder.AddColumn<string>(
-                name: "Notes",
-                table: "SleepEntries",
-                type: "TEXT",
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.AddColumn<DateOnly>(
-                name: "SleepDate",
-                table: "SleepEntries",
-                type: "TEXT",
-                nullable: false,
-                defaultValue: new DateOnly(1, 1, 1));
-
-            migrationBuilder.AddColumn<byte>(
-                name: "SleepQuality",
-                table: "SleepEntries",
-                type: "INTEGER",
-                nullable: false,
-                defaultValue: (byte)0);
+            migrationBuilder.CreateTable(
+                name: "Users",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    Email = table.Column<string>(type: "TEXT", nullable: false),
+                    DisplayName = table.Column<string>(type: "TEXT", nullable: false),
+                    PasswordHash = table.Column<string>(type: "TEXT", nullable: false),
+                    CreationDate = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    LastOnline = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    Age = table.Column<byte>(type: "INTEGER", nullable: false),
+                    Sex = table.Column<string>(type: "TEXT", nullable: false),
+                    HeightM = table.Column<float>(type: "REAL", nullable: false),
+                    WeightKg = table.Column<float>(type: "REAL", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Users", x => x.Id);
+                });
 
             migrationBuilder.CreateTable(
                 name: "DietEntries",
@@ -113,6 +47,51 @@ namespace HealthingHand.Data.Migrations
                     table.PrimaryKey("PK_DietEntries", x => x.Id);
                     table.ForeignKey(
                         name: "FK_DietEntries_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "SleepEntries",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    UserId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    SleepDate = table.Column<DateOnly>(type: "TEXT", nullable: false),
+                    StartTime = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    EndTime = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    SleepQuality = table.Column<byte>(type: "INTEGER", nullable: false),
+                    Notes = table.Column<string>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SleepEntries", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_SleepEntries_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "WeightEntries",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    UserId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    Date = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    WeightKg = table.Column<float>(type: "REAL", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_WeightEntries", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_WeightEntries_Users_UserId",
                         column: x => x.UserId,
                         principalTable: "Users",
                         principalColumn: "Id",
@@ -194,12 +173,6 @@ namespace HealthingHand.Data.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_SleepEntries_UserId_SleepDate",
-                table: "SleepEntries",
-                columns: new[] { "UserId", "SleepDate" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
                 name: "IX_DietEntries_UserId",
                 table: "DietEntries",
                 column: "UserId");
@@ -213,6 +186,24 @@ namespace HealthingHand.Data.Migrations
                 name: "IX_MealItems_DietEntryId",
                 table: "MealItems",
                 column: "DietEntryId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SleepEntries_UserId_SleepDate",
+                table: "SleepEntries",
+                columns: new[] { "UserId", "SleepDate" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Users_Email",
+                table: "Users",
+                column: "Email",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_WeightEntries_UserId_Date",
+                table: "WeightEntries",
+                columns: new[] { "UserId", "Date" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_WorkoutEntries_UserId_StartedAt",
@@ -230,68 +221,19 @@ namespace HealthingHand.Data.Migrations
                 name: "MealItems");
 
             migrationBuilder.DropTable(
+                name: "SleepEntries");
+
+            migrationBuilder.DropTable(
+                name: "WeightEntries");
+
+            migrationBuilder.DropTable(
                 name: "WorkoutEntries");
 
             migrationBuilder.DropTable(
                 name: "DietEntries");
 
-            migrationBuilder.DropIndex(
-                name: "IX_SleepEntries_UserId_SleepDate",
-                table: "SleepEntries");
-
-            migrationBuilder.DropColumn(
-                name: "Age",
-                table: "Users");
-
-            migrationBuilder.DropColumn(
-                name: "CreationDate",
-                table: "Users");
-
-            migrationBuilder.DropColumn(
-                name: "HeightM",
-                table: "Users");
-
-            migrationBuilder.DropColumn(
-                name: "LastOnline",
-                table: "Users");
-
-            migrationBuilder.DropColumn(
-                name: "PasswordHash",
-                table: "Users");
-
-            migrationBuilder.DropColumn(
-                name: "Sex",
-                table: "Users");
-
-            migrationBuilder.DropColumn(
-                name: "WeightKg",
-                table: "Users");
-
-            migrationBuilder.DropColumn(
-                name: "EndTime",
-                table: "SleepEntries");
-
-            migrationBuilder.DropColumn(
-                name: "Notes",
-                table: "SleepEntries");
-
-            migrationBuilder.DropColumn(
-                name: "SleepDate",
-                table: "SleepEntries");
-
-            migrationBuilder.DropColumn(
-                name: "SleepQuality",
-                table: "SleepEntries");
-
-            migrationBuilder.RenameColumn(
-                name: "StartTime",
-                table: "SleepEntries",
-                newName: "Date");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_SleepEntries_UserId",
-                table: "SleepEntries",
-                column: "UserId");
+            migrationBuilder.DropTable(
+                name: "Users");
         }
     }
 }
