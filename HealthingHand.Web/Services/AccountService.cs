@@ -6,16 +6,10 @@ namespace HealthingHand.Web.Services;
 
 public interface IAccountService
 {
-    /// <summary>
-    /// Currently signed-in user (stored in-memory for this scoped service).
-    /// </summary>
     UserEntry? CurrentUser { get; }
 
     bool IsSignedIn { get; }
 
-    /// <summary>
-    /// UI can subscribe to refresh when login/logout happens.
-    /// </summary>
     event Action? AuthStateChanged;
 
     Task<UserEntry> SignInTestUserAsync();
@@ -43,6 +37,8 @@ public interface IAccountService
         float weightKg);
 
     Task<(bool Success, string? Error)> ChangePasswordAsync(string currentPassword, string newPassword);
+    
+    Task<UserEntry?> AuthenticateAsync(string email, string password);
 }
 
 public class AccountService(IAccountStore accounts) : IAccountService
@@ -209,6 +205,25 @@ public class AccountService(IAccountStore accounts) : IAccountService
         await accounts.UpdateAsync(CurrentUser);
 
         return (true, null);
+    }
+    
+    public async Task<UserEntry?> AuthenticateAsync(string email, string password)
+    {
+        email = NormalizeEmail(email);
+
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+            return null;
+
+        var user = await accounts.GetByEmailAsync(email);
+        if (user is null) return null;
+
+        if (!VerifyPassword(user.PasswordHash, password))
+            return null;
+
+        user.LastOnline = DateTime.UtcNow;
+
+        await accounts.UpdateAsync(user);
+        return user;
     }
 
     private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();

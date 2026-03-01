@@ -1,0 +1,13 @@
+﻿@inject NavigationManager Nav
+
+@code {
+    protected override void OnInitialized()
+    {
+        // Current page as a returnUrl (relative)
+        var relative = "/" + Nav.ToBaseRelativePath(Nav.Uri);
+        var url = "/login?returnUrl=" + Uri.EscapeDataString(relative);
+
+        // forceLoad so the browser fully reloads and cookie auth state is clean
+        Nav.NavigateTo(url, forceLoad: true);
+    }
+}
