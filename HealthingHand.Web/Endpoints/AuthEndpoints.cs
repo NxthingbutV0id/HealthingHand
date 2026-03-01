@@ -10,9 +10,10 @@ public static class AuthEndpoints
 {
     public static void MapAuthEndpoints(this WebApplication app)
     {
-        app.MapPost("/auth/login", AuthLogin).AllowAnonymous().DisableAntiforgery(); // ok for now; add antiforgery later if you want
+        // TODO: add antiforgery later if needed
+        app.MapPost("/auth/login", AuthLogin).AllowAnonymous().DisableAntiforgery();
         app.MapPost("/auth/register", AuthRegister).AllowAnonymous().DisableAntiforgery();
-        app.MapPost("/auth/logout", AuthLogout);
+        app.MapPost("/auth/logout", AuthLogout).DisableAntiforgery();
     }
 
     private static async Task<IResult> AuthLogin(HttpContext context, IAccountService accounts)
@@ -76,7 +77,7 @@ public static class AuthEndpoints
         
         parseSuccess = float.TryParse(form["WeightKg"].ToString(), out var weightKg);
         
-        if (!parseSuccess || (float.IsFinite(weightKg) && weightKg > 0))
+        if (!parseSuccess || !(float.IsFinite(weightKg) && weightKg > 0))
             return Results.Redirect("/register?error=Invalid weight (Must be positive and not zero)");
 
         // Sex is an enum in your service. Expect "Male"/"Female"/"Unspecified" from a <select>.
@@ -123,6 +124,6 @@ public static class AuthEndpoints
     private static async Task<IResult> AuthLogout(HttpContext context)
     {
         await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        return Results.Redirect("/");
+        return Results.Redirect("/login");
     }
 }

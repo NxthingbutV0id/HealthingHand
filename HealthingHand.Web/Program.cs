@@ -24,10 +24,11 @@ internal class Program // Personally, I prefer an explicit main method - CT
         // Web / UI
         builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
+        // After logging out, the user is stuck on a blank page until refresh
+        // TODO: figure out why and fix it
         builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
         {
             options.LoginPath = "/login";
-            options.LogoutPath = "/logout";
         });
 
         builder.Services.AddAuthorization();
