@@ -73,6 +73,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Name).IsRequired();
         });
         
+        modelBuilder.Entity<ExerciseEntry>()
+            .Property(e => e.Time)
+            .HasConversion(
+                v => (long)v.TotalSeconds,
+                v => TimeSpan.FromSeconds(v)
+            );
+        
         modelBuilder.Entity<WeightEntry>()
             .HasOne(w => w.User)
             .WithMany()
