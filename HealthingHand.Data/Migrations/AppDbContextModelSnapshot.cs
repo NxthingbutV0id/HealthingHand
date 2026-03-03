@@ -63,8 +63,8 @@ namespace HealthingHand.Data.Migrations
                     b.Property<int>("Sets")
                         .HasColumnType("INTEGER");
 
-                    b.Property<TimeSpan>("Time")
-                        .HasColumnType("TEXT");
+                    b.Property<long>("Time")
+                        .HasColumnType("INTEGER");
 
                     b.Property<float>("WeightKg")
                         .HasColumnType("REAL");

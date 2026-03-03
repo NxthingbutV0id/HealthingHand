@@ -16,7 +16,8 @@ internal class Program // Personally, I prefer an explicit main method - CT
     {
         var builder = WebApplication.CreateBuilder(args);
 
-        var cs = builder.Configuration.GetConnectionString("AppDb")!;
+        var dbPath = Path.Combine(builder.Environment.ContentRootPath, "app.db");
+        var cs = $"Data Source={dbPath}";
 
         // Data layer (factory + stores + IDatabase)
         builder.Services.AddHealthingHandData(cs);
@@ -48,6 +49,9 @@ internal class Program // Personally, I prefer an explicit main method - CT
         {
             var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
             using var db = factory.CreateDbContext();
+
+            Console.WriteLine($"[DB] SQLite DataSource = {db.Database.GetDbConnection().DataSource}");
+
             db.Database.Migrate();
         }
 
