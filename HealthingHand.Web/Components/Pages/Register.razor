@@ -1,0 +1,41 @@
+﻿@page "/register"
+
+<h3>Register</h3>
+
+@if (!string.IsNullOrWhiteSpace(error))
+{
+    <p style="color:red;">@error</p>
+}
+
+<form method="post" action="/auth/register">
+    <input type="hidden" name="ReturnUrl" value="@ReturnUrl" />
+
+    <div><label>Email</label> <input name="Email" /></div>
+    <div><label>Display Name</label> <input name="DisplayName" /></div>
+    <div><label>Password</label> <input name="Password" type="password" /></div>
+
+    <div><label>Age</label> <input name="Age" type="number" min="0" max="120" /></div>
+
+    <div>
+        <label>Sex</label>
+        <select name="Sex">
+            <option value="Unspecified">Unspecified</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+        </select>
+    </div>
+
+    <div><label>Height (m)</label> <input name="HeightM" /></div>
+    <div><label>Weight (kg)</label> <input name="WeightKg" /></div>
+
+    <button type="submit">Create account</button>
+</form>
+
+<p><a href="/login">Back to login</a></p>
+
+@code {
+    [SupplyParameterFromQuery] public string? returnUrl { get; set; }
+    [SupplyParameterFromQuery] public string? error { get; set; }
+
+    private string ReturnUrl => string.IsNullOrWhiteSpace(returnUrl) ? "/" : returnUrl!;
+}

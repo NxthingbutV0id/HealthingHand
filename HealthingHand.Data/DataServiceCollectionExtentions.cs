@@ -1,3 +1,4 @@
+using HealthingHand.Data.Entries;
 using HealthingHand.Data.Persistence;
 using HealthingHand.Data.Stores;
 using Microsoft.EntityFrameworkCore;
@@ -10,7 +11,9 @@ public static class DataServiceCollectionExtensions
 {
     public static IServiceCollection AddHealthingHandData(this IServiceCollection services, string connectionString)
     {
-        services.AddDbContextFactory<AppDbContext>(o => o.UseSqlite(connectionString));
+        services.AddDbContextFactory<AppDbContext>(o =>
+            o.UseSqlite(connectionString, b =>
+                b.MigrationsAssembly(typeof(AppDbContext).Assembly.GetName().Name)));
 
         services.AddScoped<IAccountStore, AccountStore>();
         services.AddScoped<ISleepStore, SleepStore>();

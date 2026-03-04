@@ -1,0 +1,33 @@
+@page "/"
+@page "/dashboard"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+
+@attribute [Authorize]
+
+@inject AuthenticationStateProvider AuthStateProvider
+
+<h1>Dashboard</h1>
+
+<p>Welcome back, <strong>@username</strong>!</p>
+
+<hr />
+
+<h3>Your Health Overview</h3>
+
+<ul>
+    <li> Sleep tracking (coming soon)</li>
+    <li> Workouts (coming soon)</li>
+    <li> Nutrition & calories (coming soon)</li>
+    <li> Weight tracking (coming soon)</li>
+</ul>
+
+@code {
+    private string? username;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        username = authState.User.Identity?.Name;
+    }
+}
