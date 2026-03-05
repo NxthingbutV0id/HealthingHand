@@ -1,0 +1,306 @@
+@page "/workouts"
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using HealthingHand.Data.Entries
+@using HealthingHand.Data.Stores
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IWorkoutStore WorkoutStore
+
+@attribute [Authorize]
+
+<h3>Workouts</h3>
+
+<p class="text-muted">Log workouts and keep track of your recent training.</p>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="alert alert-success" role="alert">@message</div>
+}
+
+<div class="card mb-4">
+    <div class="card-header">Add Workout</div>
+    <div class="card-body">
+        <EditForm Model="model" OnValidSubmit="SaveWorkoutAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Date</label>
+                    <InputDate class="form-control" @bind-Value="model.WorkoutDate" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Start Time</label>
+                    <InputDate Type="InputDateType.Time" class="form-control" @bind-Value="model.StartTime" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Duration (minutes)</label>
+                    <InputNumber class="form-control" @bind-Value="model.DurationMinutes" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Workout Type</label>
+                    <InputSelect class="form-select" @bind-Value="model.WorkoutType">
+                        @foreach (var workoutType in workoutTypes)
+                        {
+                            <option value="@workoutType">@ToDisplayName(workoutType)</option>
+                        }
+                    </InputSelect>
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">Notes</label>
+                    <InputTextArea class="form-control" @bind-Value="model.Notes" rows="3" />
+                </div>
+            </div>
+
+            <hr />
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Exercises</h5>
+                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AddExerciseRow">
+                    Add Exercise
+                </button>
+            </div>
+
+            @if (model.Exercises.Count == 0)
+            {
+                <p class="text-muted">No exercises added.</p>
+            }
+            else
+            {
+                @for (var i = 0; i < model.Exercises.Count; i++)
+                {
+                    var exercise = model.Exercises[i];
+                    var index = i;
+                    <div class="border rounded p-3 mb-3">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label">Name</label>
+                                <InputText class="form-control" @bind-Value="exercise.Name" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Sets</label>
+                                <InputNumber class="form-control" @bind-Value="exercise.Sets" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Reps</label>
+                                <InputNumber class="form-control" @bind-Value="exercise.Reps" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Weight (kg)</label>
+                                <InputNumber class="form-control" @bind-Value="exercise.WeightKg" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Distance (km)</label>
+                                <InputNumber class="form-control" @bind-Value="exercise.DistanceKm" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Duration (minutes)</label>
+                                <InputNumber class="form-control" @bind-Value="exercise.DurationMinutes" />
+                            </div>
+                            <div class="col-md-3 d-flex align-items-end">
+                                <button type="button" class="btn btn-outline-danger w-100" @onclick="() => RemoveExerciseRow(index)">
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+
+            <button type="submit" class="btn btn-primary">Save Workout</button>
+        </EditForm>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Recent Workouts (Last 30 Days)</span>
+        <span class="text-muted">Total: @entries.Count</span>
+    </div>
+    <div class="card-body p-0">
+        @if (entries.Count == 0)
+        {
+            <p class="p-3 mb-0">No workouts yet.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped mb-0">
+                    <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Duration</th>
+                        <th>Exercises</th>
+                        <th>Notes</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var entry in entries)
+                    {
+                        <tr>
+                            <td>@entry.StartedAt.ToString("MMM dd, yyyy hh:mm tt")</td>
+                            <td>@ToDisplayName(entry.WorkoutType)</td>
+                            <td>@entry.DurationMinutes min</td>
+                            <td>@entry.Exercises.Count</td>
+                            <td>@entry.Notes</td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteWorkoutAsync(entry.Id)">
+                                    Delete
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private sealed class WorkoutFormModel
+    {
+        [Required]
+        public DateOnly WorkoutDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+
+        [Required]
+        public TimeOnly StartTime { get; set; } = new(18, 0);
+
+        [Range(1, 600)]
+        public int DurationMinutes { get; set; } = 45;
+
+        [Required]
+        public WorkoutType WorkoutType { get; set; } = WorkoutType.StrengthTraining;
+
+        [StringLength(1000)]
+        public string Notes { get; set; } = "";
+
+        public List<ExerciseFormModel> Exercises { get; set; } = [];
+    }
+
+    private sealed class ExerciseFormModel
+    {
+        [StringLength(100)]
+        public string Name { get; set; } = "";
+
+        [Range(0, 100)]
+        public int Sets { get; set; }
+
+        [Range(0, 500)]
+        public int Reps { get; set; }
+
+        [Range(0, 2000)]
+        public float WeightKg { get; set; }
+
+        [Range(0, 2000)]
+        public float DistanceKm { get; set; }
+
+        [Range(0, 1440)]
+        public int DurationMinutes { get; set; }
+    }
+
+    private readonly WorkoutType[] workoutTypes = Enum.GetValues<WorkoutType>()
+        .Where(w => w != WorkoutType.Undefined)
+        .ToArray();
+
+    private WorkoutFormModel model = new();
+    private List<WorkoutEntry> entries = [];
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AddExerciseRow();
+        await LoadEntriesAsync();
+    }
+
+    private async Task SaveWorkoutAsync()
+    {
+        var userId = await GetUserIdAsync();
+        var startedAt = model.WorkoutDate.ToDateTime(model.StartTime);
+
+        var entry = new WorkoutEntry
+        {
+            UserId = userId,
+            StartedAt = startedAt,
+            DurationMinutes = model.DurationMinutes,
+            WorkoutType = model.WorkoutType,
+            Notes = model.Notes.Trim(),
+            Exercises = model.Exercises
+                .Where(e => !string.IsNullOrWhiteSpace(e.Name))
+                .Select(e => new ExerciseEntry
+                {
+                    Name = e.Name.Trim(),
+                    Sets = e.Sets,
+                    Reps = e.Reps,
+                    WeightKg = e.WeightKg,
+                    DistanceKm = e.DistanceKm,
+                    Time = TimeSpan.FromMinutes(e.DurationMinutes)
+                })
+                .ToList()
+        };
+
+        await WorkoutStore.AddAsync(entry);
+        message = "Workout saved.";
+
+        model = new WorkoutFormModel();
+        AddExerciseRow();
+        await LoadEntriesAsync();
+    }
+
+    private async Task DeleteWorkoutAsync(int id)
+    {
+        var userId = await GetUserIdAsync();
+        var workout = await WorkoutStore.GetAsync(id);
+        if (workout is null || workout.UserId != userId)
+        {
+            message = "Workout not found.";
+            return;
+        }
+
+        await WorkoutStore.DeleteAsync(id);
+        message = "Workout deleted.";
+        await LoadEntriesAsync();
+    }
+
+    private async Task LoadEntriesAsync()
+    {
+        var userId = await GetUserIdAsync();
+        var to = DateTime.Today.AddDays(1).AddTicks(-1);
+        var from = DateTime.Today.AddDays(-29);
+
+        entries = await WorkoutStore.ListForUserAsync(userId, from, to);
+    }
+
+    private async Task<Guid> GetUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(userIdClaim, out var userId) ? userId : Guid.Empty;
+    }
+
+    private void AddExerciseRow() => model.Exercises.Add(new ExerciseFormModel());
+
+    private void RemoveExerciseRow(int index)
+    {
+        if (index >= 0 && index < model.Exercises.Count)
+        {
+            model.Exercises.RemoveAt(index);
+        }
+    }
+
+    private static string ToDisplayName(WorkoutType workoutType) => workoutType switch
+    {
+        WorkoutType.StrengthTraining => "Strength Training",
+        WorkoutType.HighIntensityIntervalTraining => "HIIT",
+        _ => workoutType.ToString()
+    };
+}
+

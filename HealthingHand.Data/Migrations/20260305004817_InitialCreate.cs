@@ -159,7 +159,7 @@ namespace HealthingHand.Data.Migrations
                     Reps = table.Column<int>(type: "INTEGER", nullable: false),
                     WeightKg = table.Column<float>(type: "REAL", nullable: false),
                     DistanceKm = table.Column<float>(type: "REAL", nullable: false),
-                    Time = table.Column<TimeSpan>(type: "TEXT", nullable: false)
+                    Time = table.Column<long>(type: "INTEGER", nullable: false)
                 },
                 constraints: table =>
                 {
