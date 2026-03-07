@@ -1,0 +1,216 @@
+@page "/sleep"
+@using Microsoft.AspNetCore.Authorization
+@using HealthingHand.Data.Entries
+@using HealthingHand.Data.Stores
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISleepStore SleepStore
+
+@attribute [Authorize]
+
+<h3>Sleep</h3>
+
+<p class="text-muted">Log your sleep and review your recent nights.</p>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="alert alert-success" role="alert">@message</div>
+}
+
+<div class="card mb-4">
+    <div class="card-header">Add or Update Sleep Entry</div>
+    <div class="card-body">
+        <EditForm Model="model" OnValidSubmit="SaveSleepAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Sleep Date</label>
+                    <InputDate class="form-control" @bind-Value="model.SleepDate" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Bed Time</label>
+                    <InputDate Type="InputDateType.Time" class="form-control" @bind-Value="model.BedTime" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Wake Time</label>
+                    <InputDate Type="InputDateType.Time" class="form-control" @bind-Value="model.WakeTime" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Quality (1-5)</label>
+                    <InputSelect class="form-select" @bind-Value="model.Quality">
+                        <option value="1">1 - Very poor</option>
+                        <option value="2">2 - Poor</option>
+                        <option value="3">3 - Okay</option>
+                        <option value="4">4 - Good</option>
+                        <option value="5">5 - Great</option>
+                    </InputSelect>
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">Notes</label>
+                    <InputTextArea class="form-control" @bind-Value="model.Notes" rows="3" />
+                </div>
+
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">Save Sleep</button>
+                </div>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Recent Entries (Last 30 Days)</span>
+        <span class="text-muted">Avg: @averageHours.ToString("0.0")h</span>
+    </div>
+    <div class="card-body p-0">
+        @if (entries.Count == 0)
+        {
+            <p class="p-3 mb-0">No sleep entries yet.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped mb-0">
+                    <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Bed</th>
+                        <th>Wake</th>
+                        <th>Duration</th>
+                        <th>Quality</th>
+                        <th>Notes</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var entry in entries)
+                    {
+                        <tr>
+                            <td>@entry.SleepDate.ToString("MMM dd, yyyy")</td>
+                            <td>@entry.StartTime.ToString("hh:mm tt")</td>
+                            <td>@entry.EndTime.ToString("hh:mm tt")</td>
+                            <td>@GetDuration(entry).ToString(@"h\h\ mm\m")</td>
+                            <td>@ToFivePointQuality(entry.SleepQuality)/5</td>
+                            <td>@entry.Notes</td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteEntryAsync(entry.Id)">
+                                    Delete
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private sealed class SleepFormModel
+    {
+        [Required]
+        public DateOnly SleepDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+
+        [Required]
+        public TimeOnly BedTime { get; set; } = new(22, 30);
+
+        [Required]
+        public TimeOnly WakeTime { get; set; } = new(6, 30);
+
+        [Range(1, 5)]
+        public int Quality { get; set; } = 3;
+
+        [StringLength(500)]
+        public string Notes { get; set; } = "";
+    }
+
+    private SleepFormModel model = new();
+    private List<SleepEntry> entries = [];
+    private decimal averageHours;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEntriesAsync();
+    }
+
+    private async Task SaveSleepAsync()
+    {
+        var userId = await GetUserIdAsync();
+        var start = model.SleepDate.ToDateTime(model.BedTime);
+        var end = model.SleepDate.ToDateTime(model.WakeTime);
+        if (end <= start)
+        {
+            end = end.AddDays(1);
+        }
+
+        var existing = await SleepStore.GetForDateAsync(userId, model.SleepDate);
+
+        if (existing is null)
+        {
+            await SleepStore.AddAsync(new SleepEntry
+            {
+                UserId = userId,
+                SleepDate = model.SleepDate,
+                StartTime = start,
+                EndTime = end,
+                SleepQuality = ToByteQuality(model.Quality),
+                Notes = model.Notes.Trim()
+            });
+        }
+        else
+        {
+            existing.StartTime = start;
+            existing.EndTime = end;
+            existing.SleepQuality = ToByteQuality(model.Quality);
+            existing.Notes = model.Notes.Trim();
+            await SleepStore.UpdateAsync(existing);
+        }
+
+        message = "Sleep entry saved.";
+        model.Notes = "";
+        await LoadEntriesAsync();
+    }
+
+    private async Task DeleteEntryAsync(int id)
+    {
+        await SleepStore.DeleteAsync(id);
+        message = "Sleep entry deleted.";
+        await LoadEntriesAsync();
+    }
+
+    private async Task LoadEntriesAsync()
+    {
+        var userId = await GetUserIdAsync();
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var from = today.AddDays(-29);
+
+        entries = await SleepStore.ListForUserAsync(userId, from, today);
+        averageHours = entries.Count == 0
+            ? 0
+            : (decimal)entries.Average(e => GetDuration(e).TotalHours);
+    }
+
+    private async Task<Guid> GetUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(userIdClaim, out var userId) ? userId : Guid.Empty;
+    }
+
+    private static TimeSpan GetDuration(SleepEntry entry) => entry.EndTime - entry.StartTime;
+
+    private static byte ToByteQuality(int quality) => (byte)Math.Clamp(quality * 51, 0, byte.MaxValue);
+
+    private static int ToFivePointQuality(byte quality) => Math.Clamp((int)Math.Round(quality / 51.0), 1, 5);
+}

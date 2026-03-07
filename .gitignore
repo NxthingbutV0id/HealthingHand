@@ -3,3 +3,17 @@ obj/
 /packages/
 riderModule.iml
 /_ReSharper.Caches/
+
+# .NET build output
+**/bin/
+**/obj/
+
+# Local dotnet home (should NOT be committed)
+.dotnet_home/
+
+# NuGet caches (if they appear in repo)
+.nuget/
+**/.nuget/
+
+# (Optional) local dev database files if you don't want them tracked
+**/*.db

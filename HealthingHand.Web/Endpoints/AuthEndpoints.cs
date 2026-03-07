@@ -121,9 +121,10 @@ public static class AuthEndpoints
         return Results.Redirect(returnUrl);
     }
     
-    private static async Task<IResult> AuthLogout(HttpContext context)
+    private static async Task AuthLogout(HttpContext context)
     {
         await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        return Results.Redirect("/login");
+        context.Response.Redirect("/logout");
     }
 }
+
