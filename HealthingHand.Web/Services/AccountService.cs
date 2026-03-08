@@ -39,6 +39,8 @@ public interface IAccountService
     Task<(bool Success, string? Error)> ChangePasswordAsync(string currentPassword, string newPassword);
     
     Task<UserEntry?> AuthenticateAsync(string email, string password);
+    
+    Task<(bool Success, string? Error)> DeleteCurrentAccountAsync(Guid userId, string currentPassword);
 }
 
 public class AccountService(IAccountStore accounts) : IAccountService
@@ -224,6 +226,27 @@ public class AccountService(IAccountStore accounts) : IAccountService
 
         await accounts.UpdateAsync(user);
         return user;
+    }
+    
+    public async Task<(bool Success, string? Error)> DeleteCurrentAccountAsync(Guid userId, string currentPassword)
+    {
+        if (string.IsNullOrWhiteSpace(currentPassword))
+            return (false, "Password is required.");
+    
+        var user = await accounts.GetAsync(userId);
+        if (user is null)
+            return (false, "Account not found.");
+    
+        if (!VerifyPassword(user.PasswordHash, currentPassword))
+            return (false, "Current password is incorrect.");
+    
+        await accounts.DeleteAsync(userId);
+
+        if (CurrentUser?.Id != userId) return (true, null);
+        CurrentUser = null;
+        AuthStateChanged?.Invoke();
+
+        return (true, null);
     }
 
     private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();

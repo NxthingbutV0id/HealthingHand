@@ -1,24 +1,49 @@
 @page "/login"
+@using Microsoft.AspNetCore.WebUtilities
+@inject NavigationManager Nav
+
+<PageTitle>Login</PageTitle>
 
 <h3>Login</h3>
 
-@if (error == 1)
+@if (!string.IsNullOrWhiteSpace(ErrorMessage))
 {
-    <p style="color:red;">Invalid email or password.</p>
+    <div class="alert alert-danger">@ErrorMessage</div>
 }
 
 <form method="post" action="/auth/login">
     <input type="hidden" name="ReturnUrl" value="@ReturnUrl" />
-    <div><label>Email</label> <input name="Email" /></div>
-    <div><label>Password</label> <input name="Password" type="password" /></div>
-    <button type="submit">Sign in</button>
+
+    <div class="mb-3">
+        <label class="form-label">Email</label>
+        <input class="form-control" type="email" name="Email" required />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Password</label>
+        <input class="form-control" type="password" name="Password" required />
+    </div>
+
+    <button class="btn btn-primary" type="submit">Login</button>
 </form>
 
-<p><a href="/register">Create an account</a></p>
-
 @code {
-    [SupplyParameterFromQuery] public string? returnUrl { get; set; }
-    [SupplyParameterFromQuery] public int? error { get; set; }
+    private string? ErrorMessage;
+    private string ReturnUrl = "/";
 
-    private string ReturnUrl => string.IsNullOrWhiteSpace(returnUrl) ? "/" : returnUrl!;
+    protected override void OnInitialized()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var query = QueryHelpers.ParseQuery(uri.Query);
+
+        if (query.TryGetValue("error", out var error))
+        {
+            ErrorMessage = error == "1" ? "Invalid email or password." : error.ToString();
+        }
+
+        if (query.TryGetValue("returnUrl", out var returnUrl) && !string.IsNullOrWhiteSpace(returnUrl))
+        {
+            ReturnUrl = returnUrl.ToString();
+        }
+    }
 }

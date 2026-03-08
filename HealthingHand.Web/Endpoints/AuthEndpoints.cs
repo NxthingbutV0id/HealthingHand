@@ -14,6 +14,7 @@ public static class AuthEndpoints
         app.MapPost("/auth/login", AuthLogin).AllowAnonymous().DisableAntiforgery();
         app.MapPost("/auth/register", AuthRegister).AllowAnonymous().DisableAntiforgery();
         app.MapPost("/auth/logout", AuthLogout).DisableAntiforgery();
+        app.MapPost("/auth/delete-account", AuthDeleteAccount).DisableAntiforgery();
     }
 
     private static async Task<IResult> AuthLogin(HttpContext context, IAccountService accounts)
@@ -125,6 +126,27 @@ public static class AuthEndpoints
     {
         await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         context.Response.Redirect("/logout");
+    }
+    
+    private static async Task<IResult> AuthDeleteAccount(HttpContext context, IAccountService accounts)
+    {
+        var userIdClaim = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdClaim, out var userId))
+            return Results.Redirect("/login");
+
+        var form = await context.Request.ReadFormAsync();
+        var password = form["Password"].ToString();
+        var confirmation = form["Confirmation"].ToString();
+
+        if (!string.Equals(confirmation, "DELETE", StringComparison.Ordinal))
+            return Results.Redirect("/account?error=Type%20DELETE%20to%20confirm");
+
+        var (ok, error) = await accounts.DeleteCurrentAccountAsync(userId, password);
+        if (!ok)
+            return Results.Redirect($"/account?error={Uri.EscapeDataString(error ?? "Delete failed")}");
+
+        await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return Results.Redirect("/login?deleted=1");
     }
 }
 
