@@ -6,6 +6,11 @@
 
 <h3>Login</h3>
 
+@if (!string.IsNullOrWhiteSpace(SuccessMessage))
+{
+    <div class="alert alert-success">@SuccessMessage</div>
+}
+
 @if (!string.IsNullOrWhiteSpace(ErrorMessage))
 {
     <div class="alert alert-danger">@ErrorMessage</div>
@@ -29,6 +34,7 @@
 
 @code {
     private string? ErrorMessage;
+    private string? SuccessMessage;
     private string ReturnUrl = "/";
 
     protected override void OnInitialized()
@@ -38,10 +44,18 @@
 
         if (query.TryGetValue("error", out var error))
         {
-            ErrorMessage = error == "1" ? "Invalid email or password." : error.ToString();
+            ErrorMessage = error == "1"
+                ? "Invalid email or password."
+                : Uri.UnescapeDataString(error.ToString());
         }
 
-        if (query.TryGetValue("returnUrl", out var returnUrl) && !string.IsNullOrWhiteSpace(returnUrl))
+        if (query.TryGetValue("deleted", out var deleted) && deleted == "1")
+        {
+            SuccessMessage = "Your account has been deleted.";
+        }
+
+        if (query.TryGetValue("returnUrl", out var returnUrl) &&
+            !string.IsNullOrWhiteSpace(returnUrl))
         {
             ReturnUrl = returnUrl.ToString();
         }

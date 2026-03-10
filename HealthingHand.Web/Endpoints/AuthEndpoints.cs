@@ -15,6 +15,7 @@ public static class AuthEndpoints
         app.MapPost("/auth/register", AuthRegister).AllowAnonymous().DisableAntiforgery();
         app.MapPost("/auth/logout", AuthLogout).DisableAntiforgery();
         app.MapPost("/auth/delete-account", AuthDeleteAccount).DisableAntiforgery();
+        app.MapPost("/auth/update-display-name", AuthUpdateDisplayName).DisableAntiforgery();
     }
 
     private static async Task<IResult> AuthLogin(HttpContext context, IAccountService accounts)
@@ -128,22 +129,60 @@ public static class AuthEndpoints
         context.Response.Redirect("/logout");
     }
     
-    private static async Task<IResult> AuthDeleteAccount(HttpContext context, IAccountService accounts)
+    private static async Task SignInUserAsync(HttpContext context, UserEntry user)
     {
-        var userIdClaim = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!Guid.TryParse(userIdClaim, out var userId))
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.DisplayName),
+            new(ClaimTypes.Email, user.Email),
+        };
+
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        var principal = new ClaimsPrincipal(identity);
+
+        await context.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            principal,
+            new AuthenticationProperties
+            {
+                IsPersistent = true
+            });
+    }
+
+    private static async Task<IResult> AuthUpdateDisplayName(HttpContext context, IAccountService accounts)
+    {
+        var userIdValue = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdValue, out var userId))
             return Results.Redirect("/login");
 
         var form = await context.Request.ReadFormAsync();
-        var password = form["Password"].ToString();
+        var displayName = form["DisplayName"].ToString();
+
+        var (ok, error, user) = await accounts.UpdateDisplayNameAsync(userId, displayName);
+        if (!ok || user is null)
+            return Results.Redirect($"/user?error={Uri.EscapeDataString(error ?? "Profile update failed")}");
+
+        await SignInUserAsync(context, user);
+        return Results.Redirect("/user?success=Display%20name%20updated");
+    }
+
+    private static async Task<IResult> AuthDeleteAccount(HttpContext context, IAccountService accounts)
+    {
+        var userIdValue = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdValue, out var userId))
+            return Results.Redirect("/login");
+
+        var form = await context.Request.ReadFormAsync();
+        var currentPassword = form["CurrentPassword"].ToString();
         var confirmation = form["Confirmation"].ToString();
 
         if (!string.Equals(confirmation, "DELETE", StringComparison.Ordinal))
-            return Results.Redirect("/account?error=Type%20DELETE%20to%20confirm");
+            return Results.Redirect("/user?deleteError=Type%20DELETE%20to%20confirm");
 
-        var (ok, error) = await accounts.DeleteCurrentAccountAsync(userId, password);
+        var (ok, error) = await accounts.DeleteAccountAsync(userId, currentPassword);
         if (!ok)
-            return Results.Redirect($"/account?error={Uri.EscapeDataString(error ?? "Delete failed")}");
+            return Results.Redirect($"/user?deleteError={Uri.EscapeDataString(error ?? "Delete failed")}");
 
         await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         return Results.Redirect("/login?deleted=1");

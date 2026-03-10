@@ -1,33 +1,275 @@
 @page "/"
 @page "/dashboard"
+@using System.Security.Claims
+@using HealthingHand.Data
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using HealthingHand.Data.Entries
 
 @attribute [Authorize]
 
 @inject AuthenticationStateProvider AuthStateProvider
+@inject IDatabase Database
 
-<h1>Dashboard</h1>
+<PageTitle>Dashboard</PageTitle>
 
-<p>Welcome back, <strong>@username</strong>!</p>
+@if (isLoading)
+{
+    <p>Loading dashboard...</p>
+}
+else
+{
+    <div class="dashboard-shell">
+        <div class="dashboard-header">
+            <div>
+                <h1>Dashboard</h1>
+                <p>Welcome back, <strong>@username</strong>!</p>
+                <p class="dashboard-muted">@weekLabel</p>
+            </div>
 
-<hr />
+            <div class="week-overview">
+                <h3>Week Overview</h3>
+                <div class="overview-number">@totalEntriesThisWeek</div>
+                <p class="dashboard-muted">total entries this week</p>
+                <p class="dashboard-muted">@modulesWithActivity of 4 tracked modules active</p>
+            </div>
+        </div>
 
-<h3>Your Health Overview</h3>
+        <div class="dashboard-grid">
+            <section class="dashboard-card">
+                <h3>Sleep</h3>
+                <div class="card-number">@sleepCount</div>
+                <p>@sleepSummary</p>
+                <div class="card-actions">
+                    <a class="dashboard-btn primary" href="/sleep/add?returnUrl=/dashboard">Add entry</a>
+                    <a class="dashboard-btn" href="/sleep">View entries</a>
+                </div>
+            </section>
 
-<ul>
-    <li> Sleep tracking (coming soon)</li>
-    <li> Workouts (coming soon)</li>
-    <li> Nutrition & calories (coming soon)</li>
-    <li> Weight tracking (coming soon)</li>
-</ul>
+            <section class="dashboard-card">
+                <h3>Nutrition</h3>
+                <div class="card-number">@dietCount</div>
+                <p>@dietSummary</p>
+                <div class="card-actions">
+                    <a class="dashboard-btn primary" href="/diet/add?returnUrl=/dashboard">Add entry</a>
+                    <a class="dashboard-btn" href="/diet">View entries</a>
+                </div>
+            </section>
+
+            <section class="dashboard-card">
+                <h3>Workouts</h3>
+                <div class="card-number">@workoutCount</div>
+                <p>@workoutSummary</p>
+                <div class="card-actions">
+                    <a class="dashboard-btn primary" href="/workout/add?returnUrl=/dashboard">Add entry</a>
+                    <a class="dashboard-btn" href="/workout">View entries</a>
+                </div>
+            </section>
+
+            <section class="dashboard-card">
+                <h3>Weight</h3>
+                <div class="card-number">
+                    @(latestWeightKg is not null ? $"{latestWeightKg:0.0}" : "—")
+                </div>
+                <p>@weightSummary</p>
+                <div class="card-actions">
+                    <a class="dashboard-btn primary" href="/weight/add?returnUrl=/dashboard">Add entry</a>
+                    <a class="dashboard-btn" href="/weight">View entries</a>
+                </div>
+            </section>
+        </div>
+    </div>
+}
+
+<style>
+    .dashboard-shell {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .dashboard-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        align-items: stretch;
+    }
+
+    .week-overview,
+    .dashboard-card {
+        border: 1px solid #d6d6d6;
+        border-radius: 14px;
+        padding: 1rem 1.25rem;
+        background: white;
+    }
+
+    .week-overview {
+        min-width: 250px;
+    }
+
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+    }
+
+    .card-number,
+    .overview-number {
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 0.25rem 0 0.5rem 0;
+    }
+
+    .dashboard-muted {
+        color: #666;
+    }
+
+    .card-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+    }
+
+    .dashboard-btn {
+        display: inline-block;
+        padding: 0.55rem 0.85rem;
+        border-radius: 10px;
+        border: 1px solid #c8c8c8;
+        text-decoration: none;
+        color: inherit;
+        background: #f7f7f7;
+    }
+
+    .dashboard-btn.primary {
+        background: #1f6feb;
+        color: white;
+        border-color: #1f6feb;
+    }
+
+    .dashboard-btn.disabled {
+        opacity: 0.65;
+        pointer-events: none;
+    }
+</style>
 
 @code {
-    private string? username;
+    private string username = "User";
+    private bool isLoading = true;
+    private float? latestWeightKg;
+    
+    private int sleepCount;
+    private int dietCount;
+    private int workoutCount;
+    private int totalEntriesThisWeek;
+    private int modulesWithActivity;
+    private int weeklyCalories;
+    private int workoutMinutes;
+    private int weightCount;
+
+    private string weekLabel = "";
+    private string sleepSummary = "No sleep entries logged this week.";
+    private string dietSummary = "No meals logged this week.";
+    private string workoutSummary = "No workouts logged this week.";
+    private string weightSummary = "No weight entries logged this week.";
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        username = authState.User.Identity?.Name;
+        var weekStart = StartOfWeek(DateTime.Now.Date, DayOfWeek.Monday);
+        var weekEnd = weekStart.AddDays(7).AddTicks(-1);
+        weekLabel = $"{weekStart:MMM d} - {weekStart.AddDays(6):MMM d}";
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            username = user.Identity?.Name?.Trim() ?? "User";
+            if (string.IsNullOrWhiteSpace(username))
+                username = "User";
+
+            var userIdText = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdText, out var userId))
+                return;
+
+            var sleepEntries = await Database.Sleep.ListForUserAsync(
+                userId,
+                DateOnly.FromDateTime(weekStart),
+                DateOnly.FromDateTime(weekStart.AddDays(6)));
+
+            var dietEntries = await Database.Diet.ListForUserAsync(
+                userId,
+                weekStart,
+                weekEnd,
+                includeItems: true);
+
+            var workoutEntries = await Database.Workout.ListForUserAsync(
+                userId,
+                weekStart,
+                weekEnd);
+
+            var weightEntries = await Database.Weight.ListForUserAsync(
+                userId,
+                weekStart,
+                weekEnd);
+
+            sleepCount = sleepEntries.Count;
+            dietCount = dietEntries.Count;
+            workoutCount = workoutEntries.Count;
+            weightCount = weightEntries.Count;
+
+            weeklyCalories = dietEntries.Sum(meal => meal.Items?.Sum(item => item.Calories) ?? 0);
+            workoutMinutes = workoutEntries.Sum(workout => workout.DurationMinutes);
+
+            var latestWeightEntry = weightEntries
+                .OrderByDescending(w => w.Date)
+                .FirstOrDefault();
+
+            latestWeightKg = latestWeightEntry?.WeightKg;
+
+            totalEntriesThisWeek = sleepCount + dietCount + workoutCount + weightCount;
+            modulesWithActivity =
+                (sleepCount > 0 ? 1 : 0) +
+                (dietCount > 0 ? 1 : 0) +
+                (workoutCount > 0 ? 1 : 0) +
+                (weightCount > 0 ? 1 : 0);
+
+            sleepSummary = sleepCount switch
+            {
+                0 => "No sleep entries logged this week.",
+                1 => "1 sleep entry logged this week.",
+                _ => $"{sleepCount} sleep entries logged this week."
+            };
+
+            dietSummary = dietCount switch
+            {
+                0 => "No meals logged this week.",
+                _ => $"{dietCount} meals logged • {weeklyCalories} total calories"
+            };
+
+            workoutSummary = workoutCount switch
+            {
+                0 => "No workouts logged this week.",
+                _ => $"{workoutCount} workouts logged • {workoutMinutes} total minutes"
+            };
+
+            weightSummary = weightCount switch
+            {
+                0 => "No weight entries logged this week.",
+                _ when latestWeightKg is not null => $"{weightCount} entries logged • latest: {latestWeightKg:0.0} kg",
+                _ => $"{weightCount} weight entries logged this week."
+            };
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private static DateTime StartOfWeek(DateTime date, DayOfWeek startOfWeek)
+    {
+        var diff = (7 + (date.DayOfWeek - startOfWeek)) % 7;
+        return date.AddDays(-diff).Date;
     }
 }

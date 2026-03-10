@@ -41,6 +41,12 @@ public interface IAccountService
     Task<UserEntry?> AuthenticateAsync(string email, string password);
     
     Task<(bool Success, string? Error)> DeleteCurrentAccountAsync(Guid userId, string currentPassword);
+    
+    Task<UserEntry?> GetByIdAsync(Guid userId);
+
+    Task<(bool Success, string? Error, UserEntry? User)> UpdateDisplayNameAsync(Guid userId, string displayName);
+
+    Task<(bool Success, string? Error)> DeleteAccountAsync(Guid userId, string currentPassword);
 }
 
 public class AccountService(IAccountStore accounts) : IAccountService
@@ -240,6 +246,53 @@ public class AccountService(IAccountStore accounts) : IAccountService
         if (!VerifyPassword(user.PasswordHash, currentPassword))
             return (false, "Current password is incorrect.");
     
+        await accounts.DeleteAsync(userId);
+
+        if (CurrentUser?.Id != userId) return (true, null);
+        CurrentUser = null;
+        AuthStateChanged?.Invoke();
+
+        return (true, null);
+    }
+    
+    public Task<UserEntry?> GetByIdAsync(Guid userId)
+    {
+        return accounts.GetAsync(userId);
+    }
+
+    public async Task<(bool Success, string? Error, UserEntry? User)> UpdateDisplayNameAsync(Guid userId, string displayName)
+    {
+        displayName = displayName.Trim();
+
+        if (string.IsNullOrWhiteSpace(displayName))
+            return (false, "Display name is required.", null);
+
+        var user = await accounts.GetAsync(userId);
+        if (user is null)
+            return (false, "Account not found.", null);
+
+        user.DisplayName = displayName;
+        await accounts.UpdateAsync(user);
+
+        if (CurrentUser?.Id != userId) return (true, null, user);
+        CurrentUser = user;
+        AuthStateChanged?.Invoke();
+
+        return (true, null, user);
+    }
+
+    public async Task<(bool Success, string? Error)> DeleteAccountAsync(Guid userId, string currentPassword)
+    {
+        if (string.IsNullOrWhiteSpace(currentPassword))
+            return (false, "Current password is required.");
+
+        var user = await accounts.GetAsync(userId);
+        if (user is null)
+            return (false, "Account not found.");
+
+        if (!VerifyPassword(user.PasswordHash, currentPassword))
+            return (false, "Current password is incorrect.");
+
         await accounts.DeleteAsync(userId);
 
         if (CurrentUser?.Id != userId) return (true, null);
