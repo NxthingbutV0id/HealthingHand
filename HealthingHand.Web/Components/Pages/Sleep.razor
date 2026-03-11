@@ -1,9 +1,10 @@
 @page "/sleep"
-@using Microsoft.AspNetCore.Authorization
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using System.Security.Claims
 @using HealthingHand.Data.Entries
 @using HealthingHand.Data.Stores
-@using System.ComponentModel.DataAnnotations
-@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ISleepStore SleepStore
@@ -19,50 +20,102 @@
     <div class="alert alert-success" role="alert">@message</div>
 }
 
-<div class="card mb-4">
-    <div class="card-header">Add or Update Sleep Entry</div>
-    <div class="card-body">
-        <EditForm Model="model" OnValidSubmit="SaveSleepAsync">
-            <DataAnnotationsValidator />
-            <ValidationSummary />
+<div class="row g-4 mb-4">
+    <div class="col-12 col-xl-5">
+        <div class="card h-100">
+            <div class="card-header">Add or Update Sleep Entry</div>
+            <div class="card-body">
+                <EditForm Model="model" OnValidSubmit="SaveSleepAsync">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary />
 
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <label class="form-label">Sleep Date</label>
-                    <InputDate class="form-control" @bind-Value="model.SleepDate" />
-                </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Sleep Date</label>
+                            <InputDate class="form-control" @bind-Value="model.SleepDate" />
+                        </div>
 
-                <div class="col-md-4">
-                    <label class="form-label">Bed Time</label>
-                    <InputDate Type="InputDateType.Time" class="form-control" @bind-Value="model.BedTime" />
-                </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Quality (1-5)</label>
+                            <InputSelect class="form-select" @bind-Value="model.Quality">
+                                <option value="1">1 - Very poor</option>
+                                <option value="2">2 - Poor</option>
+                                <option value="3">3 - Okay</option>
+                                <option value="4">4 - Good</option>
+                                <option value="5">5 - Great</option>
+                            </InputSelect>
+                        </div>
 
-                <div class="col-md-4">
-                    <label class="form-label">Wake Time</label>
-                    <InputDate Type="InputDateType.Time" class="form-control" @bind-Value="model.WakeTime" />
-                </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Bed Time</label>
+                            <InputDate Type="InputDateType.Time" class="form-control" @bind-Value="model.BedTime" />
+                        </div>
 
-                <div class="col-md-4">
-                    <label class="form-label">Quality (1-5)</label>
-                    <InputSelect class="form-select" @bind-Value="model.Quality">
-                        <option value="1">1 - Very poor</option>
-                        <option value="2">2 - Poor</option>
-                        <option value="3">3 - Okay</option>
-                        <option value="4">4 - Good</option>
-                        <option value="5">5 - Great</option>
-                    </InputSelect>
-                </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Wake Time</label>
+                            <InputDate Type="InputDateType.Time" class="form-control" @bind-Value="model.WakeTime" />
+                        </div>
 
-                <div class="col-12">
-                    <label class="form-label">Notes</label>
-                    <InputTextArea class="form-control" @bind-Value="model.Notes" rows="3" />
-                </div>
+                        <div class="col-12">
+                            <label class="form-label">Notes</label>
+                            <InputTextArea class="form-control" @bind-Value="model.Notes" rows="3" />
+                        </div>
 
-                <div class="col-12">
-                    <button type="submit" class="btn btn-primary">Save Sleep</button>
-                </div>
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary">Save Sleep</button>
+                        </div>
+                    </div>
+                </EditForm>
             </div>
-        </EditForm>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-7">
+        <div class="card h-100 sleep-chart-card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span>Sleep Hours Over Time</span>
+                <span class="text-muted">Last 14 days</span>
+            </div>
+            <div class="card-body">
+                @if (chartPoints.Count == 0)
+                {
+                    <p class="mb-0 text-muted">Add sleep entries to see your hours trend.</p>
+                }
+                else
+                {
+                    <div class="chart-summary-row">
+                        <div>
+                            <div class="chart-stat">@averageHours.ToString("0.0")h</div>
+                            <div class="text-muted small">average over the last 30 days</div>
+                        </div>
+                        <div>
+                            <div class="chart-stat">@chartPeakHours.ToString("0.0")h</div>
+                            <div class="text-muted small">highest night in the chart</div>
+                        </div>
+                    </div>
+
+                    <svg class="sleep-chart" viewBox="0 0 640 260" role="img" aria-label="Sleep hours by day">
+                        <line x1="56" y1="220" x2="612" y2="220" class="chart-axis" />
+                        <line x1="56" y1="24" x2="56" y2="220" class="chart-axis" />
+                        <line x1="56" y1="24" x2="612" y2="24" class="chart-grid" />
+                        <line x1="56" y1="122" x2="612" y2="122" class="chart-grid" />
+                        <line x1="56" y1="220" x2="612" y2="220" class="chart-grid" />
+
+                        <polyline points="@chartLinePoints" class="chart-line" />
+
+                        @foreach (var point in chartPoints)
+                        {
+                            <circle cx="@point.X" cy="@point.Y" r="4" class="chart-dot" />
+                        }
+                    </svg>
+                    <div class="chart-footer-labels">
+                        <span>@chartPoints.First().Label</span>
+                        <span>@chartPoints[chartPoints.Count / 2].Label</span>
+                        <span>@chartPoints.Last().Label</span>
+                    </div>
+                }
+            </div>
+        </div>
     </div>
 </div>
 
@@ -79,7 +132,7 @@
         else
         {
             <div class="table-responsive">
-                <table class="table table-striped mb-0">
+                <table class="table table-striped mb-0 align-middle">
                     <thead>
                     <tr>
                         <th>Date</th>
@@ -87,26 +140,46 @@
                         <th>Wake</th>
                         <th>Duration</th>
                         <th>Quality</th>
-                        <th>Notes</th>
+                        <th>Details</th>
                         <th></th>
                     </tr>
                     </thead>
                     <tbody>
                     @foreach (var entry in entries)
                     {
+                        var isExpanded = expandedEntryId == entry.Id;
+
                         <tr>
                             <td>@entry.SleepDate.ToString("MMM dd, yyyy")</td>
                             <td>@entry.StartTime.ToString("hh:mm tt")</td>
                             <td>@entry.EndTime.ToString("hh:mm tt")</td>
                             <td>@GetDuration(entry).ToString(@"h\h\ mm\m")</td>
                             <td>@ToFivePointQuality(entry.SleepQuality)/5</td>
-                            <td>@entry.Notes</td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => ToggleDetails(entry.Id)">
+                                    @(isExpanded ? "Hide Details" : "View Details")
+                                </button>
+                            </td>
                             <td>
                                 <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteEntryAsync(entry.Id)">
                                     Delete
                                 </button>
                             </td>
                         </tr>
+
+                        @if (isExpanded)
+                        {
+                            <tr class="table-light">
+                                <td colspan="7">
+                                    <div class="p-3 sleep-detail-grid">
+                                        <div><strong>Sleep Window:</strong> @entry.StartTime.ToString("MMM dd, yyyy hh:mm tt") to @entry.EndTime.ToString("MMM dd, yyyy hh:mm tt")</div>
+                                        <div><strong>Total Duration:</strong> @GetDuration(entry).ToString(@"h\h\ mm\m")</div>
+                                        <div><strong>Sleep Quality:</strong> @ToFivePointQuality(entry.SleepQuality)/5</div>
+                                        <div><strong>Notes:</strong> @(string.IsNullOrWhiteSpace(entry.Notes) ? "No notes added." : entry.Notes)</div>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
                     }
                     </tbody>
                 </table>
@@ -114,6 +187,68 @@
         }
     </div>
 </div>
+
+<style>
+    .sleep-chart-card {
+        overflow: hidden;
+    }
+
+    .chart-summary-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .chart-stat {
+        font-size: 1.75rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .sleep-chart {
+        width: 100%;
+        height: auto;
+        display: block;
+    }
+
+    .chart-axis {
+        stroke: #748094;
+        stroke-width: 1.5;
+    }
+
+    .chart-grid {
+        stroke: #d9e1ec;
+        stroke-width: 1;
+        stroke-dasharray: 4 4;
+    }
+
+    .chart-line {
+        fill: none;
+        stroke: #1f6feb;
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    .chart-dot {
+        fill: #1f6feb;
+        stroke: white;
+        stroke-width: 2;
+    }
+
+    .chart-label,
+    .chart-x-label {
+        fill: #5f6b7a;
+        font-size: 12px;
+    }
+
+    .sleep-detail-grid {
+        display: grid;
+        gap: 0.5rem;
+    }
+</style>
 
 @code {
     private sealed class SleepFormModel
@@ -134,9 +269,16 @@
         public string Notes { get; set; } = "";
     }
 
+    private sealed record SleepChartPoint(string Label, double Hours, double X, double Y);
+
     private SleepFormModel model = new();
     private List<SleepEntry> entries = [];
+    private List<SleepChartPoint> chartPoints = [];
     private decimal averageHours;
+    private double chartMaxHours = 8;
+    private double chartPeakHours;
+    private int? expandedEntryId;
+    private string chartLinePoints = "";
     private string? message;
 
     protected override async Task OnInitializedAsync()
@@ -185,6 +327,12 @@
     private async Task DeleteEntryAsync(int id)
     {
         await SleepStore.DeleteAsync(id);
+
+        if (expandedEntryId == id)
+        {
+            expandedEntryId = null;
+        }
+
         message = "Sleep entry deleted.";
         await LoadEntriesAsync();
     }
@@ -199,6 +347,51 @@
         averageHours = entries.Count == 0
             ? 0
             : (decimal)entries.Average(e => GetDuration(e).TotalHours);
+
+        BuildChart(today);
+    }
+
+    private void BuildChart(DateOnly today)
+    {
+        const int totalDays = 14;
+        const double chartLeft = 56;
+        const double chartTop = 24;
+        const double chartWidth = 556;
+        const double chartHeight = 196;
+
+        var chartStart = today.AddDays(-(totalDays - 1));
+        var hoursByDate = entries
+            .Where(e => e.SleepDate >= chartStart && e.SleepDate <= today)
+            .ToDictionary(e => e.SleepDate, e => GetDuration(e).TotalHours);
+
+        var daySeries = Enumerable.Range(0, totalDays)
+            .Select(offset => chartStart.AddDays(offset))
+            .Select(date => new
+            {
+                Date = date,
+                Hours = hoursByDate.TryGetValue(date, out var hours) ? Math.Max(0, hours) : 0
+            })
+            .ToList();
+
+        chartPeakHours = daySeries.Count == 0 ? 0 : daySeries.Max(d => d.Hours);
+        chartMaxHours = Math.Max(8, Math.Ceiling(chartPeakHours + 1));
+
+        var xStep = totalDays == 1 ? 0 : chartWidth / (totalDays - 1);
+        chartPoints = daySeries
+            .Select((day, index) =>
+            {
+                var x = chartLeft + (xStep * index);
+                var normalized = chartMaxHours <= 0 ? 0 : day.Hours / chartMaxHours;
+                var y = chartTop + chartHeight - (normalized * chartHeight);
+                return new SleepChartPoint(
+                    day.Date.ToString("MM/dd", CultureInfo.InvariantCulture),
+                    day.Hours,
+                    x,
+                    y);
+            })
+            .ToList();
+
+        chartLinePoints = string.Join(" ", chartPoints.Select(point => $"{point.X.ToString("0.##", CultureInfo.InvariantCulture)},{point.Y.ToString("0.##", CultureInfo.InvariantCulture)}"));
     }
 
     private async Task<Guid> GetUserIdAsync()
@@ -208,9 +401,13 @@
         return Guid.TryParse(userIdClaim, out var userId) ? userId : Guid.Empty;
     }
 
+    private void ToggleDetails(int id) => expandedEntryId = expandedEntryId == id ? null : id;
+
     private static TimeSpan GetDuration(SleepEntry entry) => entry.EndTime - entry.StartTime;
 
     private static byte ToByteQuality(int quality) => (byte)Math.Clamp(quality * 51, 0, byte.MaxValue);
 
     private static int ToFivePointQuality(byte quality) => Math.Clamp((int)Math.Round(quality / 51.0), 1, 5);
 }
+
+

@@ -42,7 +42,7 @@ else
                 <p>@sleepSummary</p>
                 <div class="card-actions">
                     <a class="dashboard-btn primary" href="/sleep/add?returnUrl=/dashboard">Add entry</a>
-                    <a class="dashboard-btn" href="/sleep">View entries</a>
+                    <a class="dashboard-btn" href="/sleep">View Sleep</a>
                 </div>
             </section>
 
@@ -62,14 +62,14 @@ else
                 <p>@workoutSummary</p>
                 <div class="card-actions">
                     <a class="dashboard-btn primary" href="/workout/add?returnUrl=/dashboard">Add entry</a>
-                    <a class="dashboard-btn" href="/workout">View entries</a>
+                    <a class="dashboard-btn" href="/workouts">View Workouts</a>
                 </div>
             </section>
 
             <section class="dashboard-card">
                 <h3>Weight</h3>
                 <div class="card-number">
-                    @(latestWeightKg is not null ? $"{latestWeightKg:0.0}" : "—")
+                    @(latestWeightKg is not null ? $"{latestWeightKg:0.0}" : "-")
                 </div>
                 <p>@weightSummary</p>
                 <div class="card-actions">
@@ -158,7 +158,7 @@ else
     private string username = "User";
     private bool isLoading = true;
     private float? latestWeightKg;
-    
+
     private int sleepCount;
     private int dietCount;
     private int workoutCount;
@@ -187,11 +187,15 @@ else
 
             username = user.Identity?.Name?.Trim() ?? "User";
             if (string.IsNullOrWhiteSpace(username))
+            {
                 username = "User";
+            }
 
             var userIdText = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!Guid.TryParse(userIdText, out var userId))
+            {
                 return;
+            }
 
             var sleepEntries = await Database.Sleep.ListForUserAsync(
                 userId,
@@ -245,19 +249,19 @@ else
             dietSummary = dietCount switch
             {
                 0 => "No meals logged this week.",
-                _ => $"{dietCount} meals logged • {weeklyCalories} total calories"
+                _ => $"{dietCount} meals logged - {weeklyCalories} total calories"
             };
 
             workoutSummary = workoutCount switch
             {
                 0 => "No workouts logged this week.",
-                _ => $"{workoutCount} workouts logged • {workoutMinutes} total minutes"
+                _ => $"{workoutCount} workouts logged - {workoutMinutes} total minutes"
             };
 
             weightSummary = weightCount switch
             {
                 0 => "No weight entries logged this week.",
-                _ when latestWeightKg is not null => $"{weightCount} entries logged • latest: {latestWeightKg:0.0} kg",
+                _ when latestWeightKg is not null => $"{weightCount} entries logged - latest: {latestWeightKg:0.0} kg",
                 _ => $"{weightCount} weight entries logged this week."
             };
         }
