@@ -185,9 +185,6 @@ namespace HealthingHand.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<float>("WeightKg")
-                        .HasColumnType("REAL");
-
                     b.HasKey("Id");
 
                     b.HasIndex("Email")

@@ -20,8 +20,7 @@ public interface IAccountService
         string password,
         byte age,
         Sex sex,
-        float heightM,
-        float weightKg);
+        float heightM);
 
     Task<(bool Success, string? Error)> SignInAsync(string email, string password);
 
@@ -33,8 +32,7 @@ public interface IAccountService
         string displayName,
         byte age,
         Sex sex,
-        float heightM,
-        float weightKg);
+        float heightM);
 
     Task<(bool Success, string? Error)> ChangePasswordAsync(string currentPassword, string newPassword);
     
@@ -73,7 +71,6 @@ public class AccountService(IAccountStore accounts) : IAccountService
                 Age = 20,
                 Sex = Sex.Male,
                 HeightM = 1.75f,
-                WeightKg = 70f,
                 CreationDate = DateTime.UtcNow,
                 LastOnline = DateTime.UtcNow
             };
@@ -95,8 +92,7 @@ public class AccountService(IAccountStore accounts) : IAccountService
         string password,
         byte age,
         Sex sex,
-        float heightM,
-        float weightKg)
+        float heightM)
     {
         email = NormalizeEmail(email);
         displayName = displayName.Trim();
@@ -107,8 +103,8 @@ public class AccountService(IAccountStore accounts) : IAccountService
             return (false, "Display name is required.");
         if (!IsPasswordStrongEnough(password))
             return (false, "Password must be at least 8 characters.");
-        if (heightM <= 0 || weightKg <= 0)
-            return (false, "Height and weight must be positive.");
+        if (heightM <= 0)
+            return (false, "Height must be positive.");
 
         var existing = await accounts.GetByEmailAsync(email);
         if (existing is not null)
@@ -122,7 +118,6 @@ public class AccountService(IAccountStore accounts) : IAccountService
             Age = age,
             Sex = sex,
             HeightM = heightM,
-            WeightKg = weightKg,
             CreationDate = DateTime.UtcNow,
             LastOnline = DateTime.UtcNow
         };
@@ -175,8 +170,7 @@ public class AccountService(IAccountStore accounts) : IAccountService
         string displayName,
         byte age,
         Sex sex,
-        float heightM,
-        float weightKg)
+        float heightM)
     {
         if (CurrentUser is null)
             return (false, "Not signed in.");
@@ -184,14 +178,13 @@ public class AccountService(IAccountStore accounts) : IAccountService
         displayName = displayName.Trim();
         if (string.IsNullOrWhiteSpace(displayName))
             return (false, "Display name is required.");
-        if (heightM <= 0 || weightKg <= 0)
-            return (false, "Height and weight must be positive.");
+        if (heightM <= 0)
+            return (false, "Height must be positive.");
 
         CurrentUser.DisplayName = displayName;
         CurrentUser.Age = age;
         CurrentUser.Sex = sex;
         CurrentUser.HeightM = heightM;
-        CurrentUser.WeightKg = weightKg;
 
         await accounts.UpdateAsync(CurrentUser);
         AuthStateChanged?.Invoke();
