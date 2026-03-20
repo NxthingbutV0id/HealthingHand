@@ -1,0 +1,589 @@
+@page "/diet"
+@page "/diet/add"
+
+@using HealthingHand.Web.Services
+@using HealthingHand.Web.Services.DietItems
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
+
+@attribute [Authorize]
+
+@inject IDietService DietService
+@inject NavigationManager Navigation
+
+<PageTitle>Diet</PageTitle>
+
+@if (isLoading)
+{
+    <p>Loading diet page...</p>
+}
+else
+{
+    <div class="diet-shell">
+        <div class="diet-header">
+            <div>
+                <h1>Diet</h1>
+                <p>Log meals, track calories, and review recent nutrition entries.</p>
+                <p class="diet-muted">@headerSubtitle</p>
+            </div>
+
+            <div class="diet-summary-card">
+                <h3>Today’s Nutrition</h3>
+                <div class="summary-number">@todaySummary.TotalCalories</div>
+                <p>@MealCountLabel(todaySummary.MealCount)</p>
+                <p class="diet-muted">
+                    P @todaySummary.TotalProteinGrams.ToString("0.#")g •
+                    C @todaySummary.TotalCarbsGrams.ToString("0.#")g •
+                    F @todaySummary.TotalFatGrams.ToString("0.#")g
+                </p>
+
+                @if (HasReturnUrl)
+                {
+                    <div class="card-actions">
+                        <a class="diet-btn" href="@ReturnUrl">Back</a>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="diet-alert error">@errorMessage</div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(successMessage))
+        {
+            <div class="diet-alert success">@successMessage</div>
+        }
+
+        <div class="diet-grid">
+            <section class="diet-card">
+                <div class="section-header">
+                    <div>
+                        <h3>Add Meal</h3>
+                        <p class="diet-muted">Create a meal entry and add one or more food items.</p>
+                    </div>
+                </div>
+
+                <EditForm Model="meal" OnSubmit="HandleSubmitAsync">
+                    <div class="form-grid">
+                        <div class="field">
+                            <label>Meal Type</label>
+                            <input class="diet-input" @bind="meal.MealType" placeholder="Breakfast, Lunch, Snack..." />
+                        </div>
+
+                        <div class="field">
+                            <label>Eaten At</label>
+                            <input class="diet-input"
+                                   type="datetime-local"
+                                   @bind="meal.EatenAt"
+                                   @bind:format="yyyy-MM-ddTHH:mm" />
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label>Notes</label>
+                        <textarea class="diet-input diet-textarea" @bind="meal.Notes" placeholder="Optional notes..."></textarea>
+                    </div>
+
+                    <div class="items-toolbar">
+                        <div>
+                            <h4>Food Items</h4>
+                            <p class="diet-muted">Each row represents one food item in this meal.</p>
+                        </div>
+
+                        <button type="button" class="diet-btn" @onclick="AddItem">
+                            + Add Item
+                        </button>
+                    </div>
+
+                    @for (var i = 0; i < meal.Items.Count; i++)
+                    {
+                        var item = meal.Items[i];
+
+                        <div class="food-item-card">
+                            <div class="food-item-top">
+                                <strong>Item @(i + 1)</strong>
+                                <button type="button" class="diet-btn danger" @onclick="() => RemoveItem(item)">
+                                    Remove
+                                </button>
+                            </div>
+
+                            <div class="food-grid food-grid-main">
+                                <div class="field">
+                                    <label>Name</label>
+                                    <input class="diet-input" @bind="item.Name" placeholder="Chicken breast" />
+                                </div>
+
+                                <div class="field">
+                                    <label>Quantity</label>
+                                    <input class="diet-input" type="number" step="0.1" min="0" @bind="item.Quantity" />
+                                </div>
+
+                                <div class="field">
+                                    <label>Unit</label>
+                                    <input class="diet-input" @bind="item.Unit" placeholder="g, oz, serving..." />
+                                </div>
+
+                                <div class="field">
+                                    <label>Calories</label>
+                                    <input class="diet-input" type="number" step="1" min="0" @bind="item.Calories" />
+                                </div>
+                            </div>
+
+                            <div class="food-grid">
+                                <div class="field">
+                                    <label>Protein (g)</label>
+                                    <input class="diet-input" type="number" step="0.1" min="0" @bind="item.ProteinGrams" />
+                                </div>
+
+                                <div class="field">
+                                    <label>Carbs (g)</label>
+                                    <input class="diet-input" type="number" step="0.1" min="0" @bind="item.CarbsGrams" />
+                                </div>
+
+                                <div class="field">
+                                    <label>Fat (g)</label>
+                                    <input class="diet-input" type="number" step="0.1" min="0" @bind="item.FatGrams" />
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="form-actions">
+                        <button class="diet-btn primary" type="submit" disabled="@isSaving">
+                            @(isSaving ? "Saving..." : "Save Meal")
+                        </button>
+
+                        <button class="diet-btn" type="button" @onclick="ResetForm" disabled="@isSaving">
+                            Clear
+                        </button>
+                    </div>
+                </EditForm>
+            </section>
+
+            <section class="diet-card">
+                <div class="section-header">
+                    <div>
+                        <h3>Recent Meals</h3>
+                        <p class="diet-muted">Latest logged meals for the current user.</p>
+                    </div>
+                </div>
+
+                @if (recentMeals.Count == 0)
+                {
+                    <p class="diet-muted">No meals logged yet.</p>
+                }
+                else
+                {
+                    <div class="meal-list">
+                        @foreach (var recentMeal in recentMeals)
+                        {
+                            <article class="meal-card">
+                                <div class="meal-card-top">
+                                    <div>
+                                        <h4>@recentMeal.MealType</h4>
+                                        <p class="diet-muted">@recentMeal.EatenAt.ToString("MMM d, yyyy h:mm tt")</p>
+                                    </div>
+
+                                    <div class="meal-calories">
+                                        <strong>@recentMeal.TotalCalories</strong>
+                                        <span>cal</span>
+                                    </div>
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(recentMeal.Notes))
+                                {
+                                    <p>@recentMeal.Notes</p>
+                                }
+
+                                <div class="meal-meta">
+                                    <span>@recentMeal.ItemCount item(s)</span>
+                                    <span>P @recentMeal.TotalProteinGrams.ToString("0.#")g</span>
+                                    <span>C @recentMeal.TotalCarbsGrams.ToString("0.#")g</span>
+                                    <span>F @recentMeal.TotalFatGrams.ToString("0.#")g</span>
+                                </div>
+                            </article>
+                        }
+                    </div>
+                }
+            </section>
+        </div>
+    </div>
+}
+
+<style>
+    .diet-shell {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .diet-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        align-items: stretch;
+    }
+
+    .diet-summary-card,
+    .diet-card,
+    .diet-alert,
+    .food-item-card,
+    .meal-card {
+        border: 1px solid #d6d6d6;
+        border-radius: 14px;
+        background: white;
+    }
+
+    .diet-summary-card,
+    .diet-card {
+        padding: 1rem 1.25rem;
+    }
+
+    .diet-summary-card {
+        min-width: 260px;
+    }
+
+    .summary-number {
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 0.25rem 0 0.5rem 0;
+    }
+
+    .diet-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr);
+        gap: 1rem;
+    }
+
+    .diet-muted {
+        color: #666;
+    }
+
+    .diet-alert {
+        padding: 0.9rem 1rem;
+    }
+
+    .diet-alert.error {
+        border-color: #e3a2a2;
+        background: #fff4f4;
+        color: #8a1f1f;
+    }
+
+    .diet-alert.success {
+        border-color: #9ed0a7;
+        background: #f2fff3;
+        color: #1d6a2b;
+    }
+
+    .section-header {
+        margin-bottom: 1rem;
+    }
+
+    .form-grid,
+    .food-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.85rem;
+    }
+
+    .food-grid-main {
+        margin-bottom: 0.85rem;
+    }
+
+    .field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        margin-bottom: 0.9rem;
+    }
+
+    .field label {
+        font-weight: 600;
+    }
+
+    .diet-input {
+        width: 100%;
+        padding: 0.65rem 0.75rem;
+        border: 1px solid #c8c8c8;
+        border-radius: 10px;
+        background: #fff;
+        box-sizing: border-box;
+    }
+
+    .diet-textarea {
+        min-height: 90px;
+        resize: vertical;
+    }
+
+    .items-toolbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin: 1.25rem 0 0.75rem 0;
+    }
+
+    .food-item-card {
+        padding: 1rem;
+        margin-bottom: 1rem;
+        background: #fafafa;
+    }
+
+    .food-item-top,
+    .meal-card-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 0.75rem;
+    }
+
+    .form-actions,
+    .card-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+    }
+
+    .diet-btn {
+        display: inline-block;
+        padding: 0.55rem 0.85rem;
+        border-radius: 10px;
+        border: 1px solid #c8c8c8;
+        text-decoration: none;
+        color: inherit;
+        background: #f7f7f7;
+        cursor: pointer;
+    }
+
+    .diet-btn.primary {
+        background: #1f6feb;
+        color: white;
+        border-color: #1f6feb;
+    }
+
+    .diet-btn.danger {
+        background: #fff3f3;
+        border-color: #e0b3b3;
+        color: #8a1f1f;
+    }
+
+    .diet-btn:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+    }
+
+    .meal-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+    }
+
+    .meal-card {
+        padding: 1rem;
+    }
+
+    .meal-card h4 {
+        margin: 0;
+    }
+
+    .meal-calories {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        min-width: 70px;
+    }
+
+    .meal-calories strong {
+        font-size: 1.25rem;
+    }
+
+    .meal-meta {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 0.75rem;
+    }
+
+    .meal-meta span {
+        background: #f5f5f5;
+        border: 1px solid #dddddd;
+        border-radius: 999px;
+        padding: 0.3rem 0.55rem;
+        font-size: 0.9rem;
+    }
+
+    @@media (max-width: 900px) {
+        .diet-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    private bool isLoading = true;
+    private bool isSaving;
+    private string? errorMessage;
+    private string? successMessage;
+
+    private DietMealInput meal = CreateEmptyMeal();
+    private List<DietMealListItem> recentMeals = [];
+    private DietSummaryDto todaySummary = new();
+
+    private string headerSubtitle = "Create a meal entry and review recent nutrition history.";
+
+    private bool HasReturnUrl =>
+        !string.IsNullOrWhiteSpace(ReturnUrl) &&
+        ReturnUrl.StartsWith("/");
+
+    protected override async Task OnInitializedAsync()
+    {
+        headerSubtitle = IsAddRoute()
+            ? "Add a meal entry, then return to the dashboard."
+            : "Create a meal entry and review recent nutrition history.";
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            await RefreshSummaryAsync();
+            await RefreshMealsAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load diet data. {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshSummaryAsync()
+    {
+        todaySummary = await DietService.GetTodaySummaryAsync();
+    }
+
+    private async Task RefreshMealsAsync()
+    {
+        var from = DateTime.Today.AddDays(-14);
+        var to = DateTime.Today.AddDays(1).AddTicks(-1);
+
+        recentMeals = (await DietService.ListMealsAsync(from, to)).ToList();
+    }
+
+    private void AddItem()
+    {
+        meal.Items.Add(new DietMealItemInput
+        {
+            Quantity = 1,
+            Unit = "serving"
+        });
+    }
+
+    private void RemoveItem(DietMealItemInput item)
+    {
+        if (meal.Items.Count == 1)
+        {
+            meal.Items[0] = new DietMealItemInput
+            {
+                Quantity = 1,
+                Unit = "serving"
+            };
+            return;
+        }
+
+        meal.Items.Remove(item);
+    }
+
+    private async Task HandleSubmitAsync(EditContext _)
+    {
+        await SaveMealAsync();
+    }
+
+    private async Task SaveMealAsync()
+    {
+        errorMessage = null;
+        successMessage = null;
+        isSaving = true;
+
+        try
+        {
+            var result = await DietService.CreateMealAsync(meal);
+
+            if (!result.Success)
+            {
+                errorMessage = result.Error ?? "Unable to save meal.";
+                return;
+            }
+
+            successMessage = "Meal saved successfully.";
+            meal = CreateEmptyMeal();
+
+            await RefreshSummaryAsync();
+            await RefreshMealsAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Something went wrong while saving the meal. {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ResetForm()
+    {
+        errorMessage = null;
+        successMessage = null;
+        meal = CreateEmptyMeal();
+    }
+
+    private bool IsAddRoute()
+    {
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+        return relative.StartsWith("diet/add", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static DietMealInput CreateEmptyMeal()
+    {
+        return new DietMealInput
+        {
+            EatenAt = DateTime.Now,
+            MealType = "Meal",
+            Notes = "",
+            Items =
+            [
+                new DietMealItemInput
+                {
+                    Quantity = 1,
+                    Unit = "serving"
+                }
+            ]
+        };
+    }
+
+    private static string MealCountLabel(int mealCount) => mealCount switch
+    {
+        0 => "No meals logged today",
+        1 => "1 meal logged today",
+        _ => $"{mealCount} meals logged today"
+    };
+}

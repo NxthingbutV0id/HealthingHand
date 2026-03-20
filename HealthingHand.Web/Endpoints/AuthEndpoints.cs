@@ -38,7 +38,7 @@ public static class AuthEndpoints
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.DisplayName),
-            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Email, user.Email)
         };
 
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
@@ -76,11 +76,6 @@ public static class AuthEndpoints
         
         if (!parseSuccess || !(float.IsFinite(heightM) && heightM > 0))
             return Results.Redirect("/register?error=Invalid height (Must be positive and not zero)");
-        
-        parseSuccess = float.TryParse(form["WeightKg"].ToString(), out var weightKg);
-        
-        if (!parseSuccess || !(float.IsFinite(weightKg) && weightKg > 0))
-            return Results.Redirect("/register?error=Invalid weight (Must be positive and not zero)");
 
         // Sex is an enum in your service. Expect "Male"/"Female"/"Unspecified" from a <select>.
         parseSuccess = Enum.TryParse<Sex>(form["Sex"].ToString(), ignoreCase: true, out var sex);
@@ -89,7 +84,7 @@ public static class AuthEndpoints
             sex = Sex.Undefined;
 
         var (ok, error) = await accounts.RegisterAsync(
-            email, displayName, password, age, sex, heightM, weightKg);
+            email, displayName, password, age, sex, heightM);
 
         if (!ok)
             return Results.Redirect($"/register?error={Uri.EscapeDataString(error ?? "Registration failed")}");
@@ -103,7 +98,7 @@ public static class AuthEndpoints
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.DisplayName),
-            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Email, user.Email)
         };
 
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
@@ -135,7 +130,7 @@ public static class AuthEndpoints
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.DisplayName),
-            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Email, user.Email)
         };
 
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);

@@ -1,7 +1,5 @@
 using HealthingHand.Data;
-using HealthingHand.Data.Entries;
 using HealthingHand.Data.Persistence;
-using HealthingHand.Data.Stores;
 using HealthingHand.Web.Components;
 using HealthingHand.Web.Endpoints;
 using HealthingHand.Web.Services;
