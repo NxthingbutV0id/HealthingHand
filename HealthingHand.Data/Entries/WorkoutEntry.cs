@@ -22,6 +22,8 @@ public class WorkoutEntry
     public List<ExerciseEntry> Exercises { get; set; } = [];
     public DateTime StartedAt { get; set; }
     public int DurationMinutes { get; set; }
+    public byte SelfReportedIntensity { get; set; }
+    public int AverageHeartRate { get; set; }
     public WorkoutType WorkoutType { get; set; } = WorkoutType.Undefined;
     public string Notes { get; set; } = "";
 }

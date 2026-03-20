@@ -222,12 +222,18 @@ namespace HealthingHand.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("AverageHeartRate")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("DurationMinutes")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Notes")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<byte>("SelfReportedIntensity")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("StartedAt")
                         .HasColumnType("TEXT");
