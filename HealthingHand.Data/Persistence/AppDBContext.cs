@@ -66,6 +66,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.Property(w => w.WorkoutType).IsRequired();
             e.Property(w => w.StartedAt).IsRequired();
+            e.Property(w => w.SelfReportedIntensity).IsRequired();
+            e.Property(w => w.AverageHeartRate).IsRequired();
         });
 
         modelBuilder.Entity<ExerciseEntry>(e =>
