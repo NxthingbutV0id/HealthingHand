@@ -50,6 +50,9 @@ public sealed class UnitTest1 : IDisposable
         Assert.NotEmpty(applied);
     }
     
+    /// <summary>
+    /// This test is used to check that the database migrations are applied as expected.
+    /// </summary>
     [Fact]
     public void Debug_ListAppliedMigrations_And_UserColumns()
     {
@@ -262,60 +265,11 @@ public sealed class UnitTest1 : IDisposable
     [Fact]
     public void WorkoutEntry_CRUD_AddGetUpdateDelete_Works() => EntryCrudWorks("Workout");
 
-    private void EntryCrudWorks(string kind)
-    {
-        using var db = new AppDbContext(_options);
-
-        var (userMeta, user, userKey) = CreateAndSaveUser(db, kind.ToLowerInvariant());
-
-        var entryMeta = GetEntryMeta(db, kind, userMeta);
-
-        var entry = CreateEntryInstance(db, entryMeta, user, userKey, kind);
-        db.Add(entry);
-        db.SaveChanges();
-
-        var entryKey = GetPropValue(entry, entryMeta.KeyPropName)
-                       ?? throw new InvalidOperationException($"{kind} entry key was null after SaveChanges().");
-
-        var mutableOriginal = GetPropValue(entry, entryMeta.MutablePropName);
-
-        // Read
-        db.ChangeTracker.Clear();
-        var fetched = db.Find(entryMeta.EntryClrType, entryKey)
-                     ?? throw new InvalidOperationException($"Could not find {kind} entry by primary key after insertion.");
-
-        Assert.Equal(entryKey, GetPropValue(fetched, entryMeta.KeyPropName));
-        Assert.Equal(mutableOriginal, GetPropValue(fetched, entryMeta.MutablePropName));
-
-        // Update
-        var tracked = db.Find(entryMeta.EntryClrType, entryKey)
-                     ?? throw new InvalidOperationException($"Could not re-load {kind} entry by key for update.");
-
-        var mutableProp = entryMeta.EntryClrType.GetProperty(entryMeta.MutablePropName, BindingFlags.Instance | BindingFlags.Public)
-                         ?? throw new InvalidOperationException($"Mutable property '{entryMeta.MutablePropName}' not found on {kind} entity type.");
-
-        var updatedValue = MakeUpdatedValue(mutableProp.PropertyType, GetPropValue(tracked, entryMeta.MutablePropName));
-        SetConvertedPropValue(tracked, entryMeta.MutablePropName, updatedValue);
-        db.SaveChanges();
-
-        db.ChangeTracker.Clear();
-        var fetchedAfterUpdate = db.Find(entryMeta.EntryClrType, entryKey)
-                               ?? throw new InvalidOperationException($"Could not re-load {kind} entry after update.");
-
-        Assert.Equal(updatedValue, GetPropValue(fetchedAfterUpdate, entryMeta.MutablePropName));
-
-        // Delete
-        var toRemove = db.Find(entryMeta.EntryClrType, entryKey)
-                      ?? throw new InvalidOperationException($"Could not re-load {kind} entry by key for delete.");
-
-        db.Remove(toRemove);
-        db.SaveChanges();
-
-        db.ChangeTracker.Clear();
-        var deleted = db.Find(entryMeta.EntryClrType, entryKey);
-        Assert.Null(deleted);
-    }
-
+    
+    /// <summary>
+    /// This test is to check the login functionality by creating a user with a known password
+    /// then retrieving that user and verifying the password.
+    /// </summary>
     [Fact]
     public void UserLoginTestValid()
     {
@@ -337,9 +291,13 @@ public sealed class UnitTest1 : IDisposable
         var found = db.Users.SingleOrDefault(u => u.Email == email);
 
         Assert.NotNull(found);
-        Assert.True(VerifyUserPassword(found!, meta, password));
+        Assert.True(VerifyUserPassword(found, meta, password));
     }
     
+    /// <summary>
+    /// This test is the same as UserLoginTestValid with the difference that
+    /// it verifies that an incorrect password does not validate successfully
+    /// </summary>
     [Fact]
     public void UserLoginTestInvalid()
     {
@@ -362,9 +320,14 @@ public sealed class UnitTest1 : IDisposable
         var found = db.Users.SingleOrDefault(u => u.Email == email);
 
         Assert.NotNull(found);
-        Assert.False(VerifyUserPassword(found!, meta, wrongPassword));
+        Assert.False(VerifyUserPassword(found, meta, wrongPassword));
     }
     
+    /// <summary>
+    /// This test checks for registering a new user with a unique email
+    /// and ensures that the user is created successfully with the correct field values,
+    /// and that the password is stored (hashed if applicable) in the database.
+    /// </summary>
     [Fact]
     public void UserRegisterTestValid()
     {
@@ -386,16 +349,17 @@ public sealed class UnitTest1 : IDisposable
         var found = db.Users.SingleOrDefault(u => u.Email == email);
 
         Assert.NotNull(found);
-        Assert.Equal(email, GetPropValue(found!, meta.EmailPropName) as string);
+        Assert.Equal(email, GetPropValue(found, meta.EmailPropName) as string);
         Assert.Equal(display, GetPropValue(found, meta.DisplayNamePropName) as string);
 
-        if (!string.IsNullOrWhiteSpace(meta.PasswordPropName))
-        {
-            var storedPassword = GetPropValue(found, meta.PasswordPropName!) as string;
-            Assert.False(string.IsNullOrWhiteSpace(storedPassword));
-        }
+        if (string.IsNullOrWhiteSpace(meta.PasswordPropName)) return;
+        var storedPassword = GetPropValue(found, meta.PasswordPropName!) as string;
+        Assert.False(string.IsNullOrWhiteSpace(storedPassword));
     }
     
+    /// <summary>
+    /// This test is similar to the UserRegisterTestValid() but attempts to create two users with the same email address
+    /// </summary>
     [Fact]
     public void UserRegisterTestInvalid()
     {
@@ -417,6 +381,10 @@ public sealed class UnitTest1 : IDisposable
         Assert.Throws<DbUpdateException>(() => db.SaveChanges());
     }
     
+    /// <summary>
+    /// This test is to verify that deleting a user from the database works correctly, and that after deletion,
+    /// the user is unable to login
+    /// </summary>
     [Fact]
     public void UserDeletionTest()
     {
@@ -443,6 +411,10 @@ public sealed class UnitTest1 : IDisposable
         Assert.Null(found);
     }
     
+    /// <summary>
+    /// This test verifies that the DietStore's AddWithItemsAsync method correctly saves a DietEntry
+    /// along with its associated MealItemEntries to the database.
+    /// </summary>
     [Fact]
     public async Task AddWithItemsAsync_PersistsMealAndItems()
     {
@@ -490,13 +462,17 @@ public sealed class UnitTest1 : IDisposable
         var saved = await store.GetWithItemsAsync(mealId);
 
         Assert.NotNull(saved);
-        Assert.Equal(user.Id, saved!.UserId);
+        Assert.Equal(user.Id, saved.UserId);
         Assert.Equal("Lunch", saved.MealType);
         Assert.Equal(2, saved.Items.Count);
         Assert.Contains(saved.Items, i => i.Name == "Chicken");
         Assert.Contains(saved.Items, i => i.Name == "Rice");
     }
 
+    /// <summary>
+    /// This test is to ensure that when listing diet entries for a specific user,
+    /// only the meals associated with that user are returned
+    /// </summary>
     [Fact]
     public async Task ListForUserAsync_ReturnsOnlyThatUsersMeals()
     {
@@ -539,6 +515,9 @@ public sealed class UnitTest1 : IDisposable
         Assert.Equal("User1 meal", results[0].Notes);
     }
 
+    /// <summary>
+    /// This test checks to see if the DietStore's UpdateWithItemsAsync method correctly updates the fields of a DietEntry
+    /// </summary>
     [Fact]
     public async Task UpdateWithItemsAsync_ReplacesItemsAndUpdatesMealFields()
     {
@@ -601,24 +580,11 @@ public sealed class UnitTest1 : IDisposable
         var saved = await store.GetWithItemsAsync(mealId);
 
         Assert.NotNull(saved);
-        Assert.Equal("Brunch", saved!.MealType);
+        Assert.Equal("Brunch", saved.MealType);
         Assert.Equal("Updated", saved.Notes);
         Assert.Single(saved.Items);
         Assert.Equal("Eggs", saved.Items[0].Name);
     }
-
-    private static UserEntry MakeUser(string email) => new()
-    {
-        Id = Guid.NewGuid(),
-        Email = email,
-        DisplayName = "Test User",
-        PasswordHash = "testhash",
-        CreationDate = DateTime.UtcNow,
-        LastOnline = DateTime.UtcNow,
-        Age = 20,
-        Sex = Sex.Undefined,
-        HeightM = 1.75f
-    };
 
     // ----------------------------
     // Metadata + reflection helpers
@@ -642,6 +608,73 @@ public sealed class UnitTest1 : IDisposable
 
     private sealed record EntryMeta(Type EntryClrType, string KeyPropName, string? UserFkPropName, string MutablePropName);
 
+    private static UserEntry MakeUser(string email) => new()
+    {
+        Id = Guid.NewGuid(),
+        Email = email,
+        DisplayName = "Test User",
+        PasswordHash = "testhash",
+        CreationDate = DateTime.UtcNow,
+        LastOnline = DateTime.UtcNow,
+        Age = 20,
+        Sex = Sex.Undefined,
+        HeightM = 1.75f
+    };
+    
+    private void EntryCrudWorks(string kind)
+    {
+        using var db = new AppDbContext(_options);
+
+        var (userMeta, user, userKey) = CreateAndSaveUser(db, kind.ToLowerInvariant());
+
+        var entryMeta = GetEntryMeta(db, kind, userMeta);
+
+        var entry = CreateEntryInstance(db, entryMeta, user, userKey, kind);
+        db.Add(entry);
+        db.SaveChanges();
+
+        var entryKey = GetPropValue(entry, entryMeta.KeyPropName)
+                       ?? throw new InvalidOperationException($"{kind} entry key was null after SaveChanges().");
+
+        var mutableOriginal = GetPropValue(entry, entryMeta.MutablePropName);
+
+        // Read
+        db.ChangeTracker.Clear();
+        var fetched = db.Find(entryMeta.EntryClrType, entryKey)
+                     ?? throw new InvalidOperationException($"Could not find {kind} entry by primary key after insertion.");
+
+        Assert.Equal(entryKey, GetPropValue(fetched, entryMeta.KeyPropName));
+        Assert.Equal(mutableOriginal, GetPropValue(fetched, entryMeta.MutablePropName));
+
+        // Update
+        var tracked = db.Find(entryMeta.EntryClrType, entryKey)
+                     ?? throw new InvalidOperationException($"Could not re-load {kind} entry by key for update.");
+
+        var mutableProp = entryMeta.EntryClrType.GetProperty(entryMeta.MutablePropName, BindingFlags.Instance | BindingFlags.Public)
+                         ?? throw new InvalidOperationException($"Mutable property '{entryMeta.MutablePropName}' not found on {kind} entity type.");
+
+        var updatedValue = MakeUpdatedValue(mutableProp.PropertyType, GetPropValue(tracked, entryMeta.MutablePropName));
+        SetConvertedPropValue(tracked, entryMeta.MutablePropName, updatedValue);
+        db.SaveChanges();
+
+        db.ChangeTracker.Clear();
+        var fetchedAfterUpdate = db.Find(entryMeta.EntryClrType, entryKey)
+                               ?? throw new InvalidOperationException($"Could not re-load {kind} entry after update.");
+
+        Assert.Equal(updatedValue, GetPropValue(fetchedAfterUpdate, entryMeta.MutablePropName));
+
+        // Delete
+        var toRemove = db.Find(entryMeta.EntryClrType, entryKey)
+                      ?? throw new InvalidOperationException($"Could not re-load {kind} entry by key for delete.");
+
+        db.Remove(toRemove);
+        db.SaveChanges();
+
+        db.ChangeTracker.Clear();
+        var deleted = db.Find(entryMeta.EntryClrType, entryKey);
+        Assert.Null(deleted);
+    }
+    
     private static UserMeta GetUserMeta(AppDbContext db)
     {
         var entityTypes = db.Model.GetEntityTypes().ToList();
