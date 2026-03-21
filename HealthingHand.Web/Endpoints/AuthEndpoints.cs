@@ -14,6 +14,8 @@ public static class AuthEndpoints
         app.MapPost("/auth/login", AuthLogin).AllowAnonymous().DisableAntiforgery();
         app.MapPost("/auth/register", AuthRegister).AllowAnonymous().DisableAntiforgery();
         app.MapPost("/auth/logout", AuthLogout).DisableAntiforgery();
+        app.MapPost("/auth/delete-account", AuthDeleteAccount).DisableAntiforgery();
+        app.MapPost("/auth/update-display-name", AuthUpdateDisplayName).DisableAntiforgery();
     }
 
     private static async Task<IResult> AuthLogin(HttpContext context, IAccountService accounts)
@@ -36,7 +38,7 @@ public static class AuthEndpoints
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.DisplayName),
-            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Email, user.Email)
         };
 
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
@@ -74,11 +76,6 @@ public static class AuthEndpoints
         
         if (!parseSuccess || !(float.IsFinite(heightM) && heightM > 0))
             return Results.Redirect("/register?error=Invalid height (Must be positive and not zero)");
-        
-        parseSuccess = float.TryParse(form["WeightKg"].ToString(), out var weightKg);
-        
-        if (!parseSuccess || !(float.IsFinite(weightKg) && weightKg > 0))
-            return Results.Redirect("/register?error=Invalid weight (Must be positive and not zero)");
 
         // Sex is an enum in your service. Expect "Male"/"Female"/"Unspecified" from a <select>.
         parseSuccess = Enum.TryParse<Sex>(form["Sex"].ToString(), ignoreCase: true, out var sex);
@@ -87,7 +84,7 @@ public static class AuthEndpoints
             sex = Sex.Undefined;
 
         var (ok, error) = await accounts.RegisterAsync(
-            email, displayName, password, age, sex, heightM, weightKg);
+            email, displayName, password, age, sex, heightM);
 
         if (!ok)
             return Results.Redirect($"/register?error={Uri.EscapeDataString(error ?? "Registration failed")}");
@@ -101,7 +98,7 @@ public static class AuthEndpoints
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.DisplayName),
-            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Email, user.Email)
         };
 
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
@@ -121,9 +118,69 @@ public static class AuthEndpoints
         return Results.Redirect(returnUrl);
     }
     
-    private static async Task<IResult> AuthLogout(HttpContext context)
+    private static async Task AuthLogout(HttpContext context)
     {
         await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        return Results.Redirect("/login");
+        context.Response.Redirect("/logout");
+    }
+    
+    private static async Task SignInUserAsync(HttpContext context, UserEntry user)
+    {
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.DisplayName),
+            new(ClaimTypes.Email, user.Email)
+        };
+
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        var principal = new ClaimsPrincipal(identity);
+
+        await context.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            principal,
+            new AuthenticationProperties
+            {
+                IsPersistent = true
+            });
+    }
+
+    private static async Task<IResult> AuthUpdateDisplayName(HttpContext context, IAccountService accounts)
+    {
+        var userIdValue = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdValue, out var userId))
+            return Results.Redirect("/login");
+
+        var form = await context.Request.ReadFormAsync();
+        var displayName = form["DisplayName"].ToString();
+
+        var (ok, error, user) = await accounts.UpdateDisplayNameAsync(userId, displayName);
+        if (!ok || user is null)
+            return Results.Redirect($"/user?error={Uri.EscapeDataString(error ?? "Profile update failed")}");
+
+        await SignInUserAsync(context, user);
+        return Results.Redirect("/user?success=Display%20name%20updated");
+    }
+
+    private static async Task<IResult> AuthDeleteAccount(HttpContext context, IAccountService accounts)
+    {
+        var userIdValue = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdValue, out var userId))
+            return Results.Redirect("/login");
+
+        var form = await context.Request.ReadFormAsync();
+        var currentPassword = form["CurrentPassword"].ToString();
+        var confirmation = form["Confirmation"].ToString();
+
+        if (!string.Equals(confirmation, "DELETE", StringComparison.Ordinal))
+            return Results.Redirect("/user?deleteError=Type%20DELETE%20to%20confirm");
+
+        var (ok, error) = await accounts.DeleteAccountAsync(userId, currentPassword);
+        if (!ok)
+            return Results.Redirect($"/user?deleteError={Uri.EscapeDataString(error ?? "Delete failed")}");
+
+        await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return Results.Redirect("/login?deleted=1");
     }
 }
+

@@ -13,9 +13,9 @@
         <AuthorizeView>
             <Authorized Context="auth">
                 <div class="nav-item px-3">
-                    <span class="nav-link text-light">
+                    <NavLink class="nav-link text-light" href="user">
                         👤 @auth.User.Identity?.Name
-                    </span>
+                    </NavLink>
                 </div>
 
                 <div class="nav-item px-3">

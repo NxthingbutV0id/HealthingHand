@@ -1,0 +1,526 @@
+@page "/workouts"
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using System.Security.Claims
+@using HealthingHand.Data.Entries
+@using HealthingHand.Data.Stores
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IWorkoutStore WorkoutStore
+
+@attribute [Authorize]
+
+<h3>Workouts</h3>
+
+<p class="text-muted">Log workouts and review your time, effort, and heart rate together.</p>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="alert alert-success" role="alert">@message</div>
+}
+
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Workout Time by Intensity</span>
+        <span class="workout-chart-key">Green = low, red = high</span>
+    </div>
+    <div class="card-body">
+        @if (entries.Count == 0)
+        {
+            <p class="mb-0 text-muted">No workout data yet.</p>
+        }
+        else
+        {
+            <div class="workout-chart" role="img" aria-label="Bar chart of total workout time, colored by intensity with average heart rate labels">
+                @foreach (var entry in ChartEntries)
+                {
+                    <div class="workout-chart-column">
+                        <div class="workout-chart-value">@($"{entry.DurationMinutes} min")</div>
+                        <div class="workout-chart-track">
+                            <div class="workout-chart-bar"
+                                 style="@GetBarStyle(entry)"
+                                 title="@GetChartTooltip(entry)">
+                                <span class="workout-chart-label">@FormatHeartRate(entry)</span>
+                            </div>
+                        </div>
+                        <div class="workout-chart-date">@entry.StartedAt.ToString("MMM dd", CultureInfo.InvariantCulture)</div>
+                        <div class="workout-chart-intensity">@($"{entry.SelfReportedIntensity}/5")</div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">Add Workout</div>
+    <div class="card-body">
+        <EditForm Model="model" OnValidSubmit="SaveWorkoutAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Date</label>
+                    <InputDate class="form-control" @bind-Value="model.WorkoutDate" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Start Time</label>
+                    <InputDate Type="InputDateType.Time" class="form-control" @bind-Value="model.StartTime" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Duration (minutes)</label>
+                    <InputNumber class="form-control" @bind-Value="model.DurationMinutes" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Workout Type</label>
+                    <InputSelect class="form-select" @bind-Value="model.WorkoutType">
+                        @foreach (var workoutType in workoutTypes)
+                        {
+                            <option value="@workoutType">@ToDisplayName(workoutType)</option>
+                        }
+                    </InputSelect>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Intensity</label>
+                    <InputSelect class="form-select" @bind-Value="model.SelfReportedIntensity">
+                        @for (var intensity = 0; intensity <= 5; intensity++)
+                        {
+                            <option value="@intensity">@($"{intensity} - {ToIntensityLabel(intensity)}")</option>
+                        }
+                    </InputSelect>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Average Heart Rate (bpm)</label>
+                    <InputNumber class="form-control" @bind-Value="model.AverageHeartRate" />
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">Notes</label>
+                    <InputTextArea class="form-control" @bind-Value="model.Notes" rows="3" />
+                </div>
+            </div>
+
+            <hr />
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Exercises</h5>
+                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AddExerciseRow">
+                    Add Exercise
+                </button>
+            </div>
+
+            @if (model.Exercises.Count == 0)
+            {
+                <p class="text-muted">No exercises added.</p>
+            }
+            else
+            {
+                @for (var i = 0; i < model.Exercises.Count; i++)
+                {
+                    var exercise = model.Exercises[i];
+                    var index = i;
+                    <div class="border rounded p-3 mb-3">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label">Name</label>
+                                <InputText class="form-control" @bind-Value="exercise.Name" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Sets</label>
+                                <InputNumber class="form-control" @bind-Value="exercise.Sets" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Reps</label>
+                                <InputNumber class="form-control" @bind-Value="exercise.Reps" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Weight (kg)</label>
+                                <InputNumber class="form-control" @bind-Value="exercise.WeightKg" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Distance (km)</label>
+                                <InputNumber class="form-control" @bind-Value="exercise.DistanceKm" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Duration (minutes)</label>
+                                <InputNumber class="form-control" @bind-Value="exercise.DurationMinutes" />
+                            </div>
+                            <div class="col-md-3 d-flex align-items-end">
+                                <button type="button" class="btn btn-outline-danger w-100" @onclick="() => RemoveExerciseRow(index)">
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+
+            <button type="submit" class="btn btn-primary">Save Workout</button>
+        </EditForm>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Recent Workouts (Last 30 Days)</span>
+        <span class="text-muted">Total: @entries.Count</span>
+    </div>
+    <div class="card-body p-0">
+        @if (entries.Count == 0)
+        {
+            <p class="p-3 mb-0">No workouts yet.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped mb-0 align-middle">
+                    <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Duration</th>
+                        <th>Intensity</th>
+                        <th>Avg HR</th>
+                        <th>Exercises</th>
+                        <th>Details</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var entry in entries)
+                    {
+                        var isExpanded = expandedEntryId == entry.Id;
+
+                        <tr>
+                            <td>@entry.StartedAt.ToString("MMM dd, yyyy hh:mm tt")</td>
+                            <td>@ToDisplayName(entry.WorkoutType)</td>
+                            <td>@entry.DurationMinutes min</td>
+                            <td>@($"{entry.SelfReportedIntensity}/5 ({ToIntensityLabel(entry.SelfReportedIntensity)})")</td>
+                            <td>@FormatHeartRate(entry)</td>
+                            <td>@entry.Exercises.Count</td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => ToggleDetails(entry.Id)">
+                                    @(isExpanded ? "Hide Details" : "View Details")
+                                </button>
+                            </td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteWorkoutAsync(entry.Id)">
+                                    Delete
+                                </button>
+                            </td>
+                        </tr>
+
+                        @if (isExpanded)
+                        {
+                            <tr class="table-light">
+                                <td colspan="8">
+                                    <div class="p-3 workout-detail-grid">
+                                        <div><strong>Workout Type:</strong> @ToDisplayName(entry.WorkoutType)</div>
+                                        <div><strong>Started:</strong> @entry.StartedAt.ToString("MMM dd, yyyy hh:mm tt")</div>
+                                        <div><strong>Duration:</strong> @entry.DurationMinutes min</div>
+                                        <div><strong>Intensity:</strong> @($"{entry.SelfReportedIntensity}/5 ({ToIntensityLabel(entry.SelfReportedIntensity)})")</div>
+                                        <div><strong>Average Heart Rate:</strong> @FormatHeartRate(entry)</div>
+                                        <div><strong>Notes:</strong> @(string.IsNullOrWhiteSpace(entry.Notes) ? "No notes added." : entry.Notes)</div>
+                                        <div>
+                                            <strong>Exercises:</strong>
+                                            @if (entry.Exercises.Count == 0)
+                                            {
+                                                <span> No exercises added.</span>
+                                            }
+                                        </div>
+
+                                        @if (entry.Exercises.Count > 0)
+                                        {
+                                            <ul class="mb-0 ps-3">
+                                                @foreach (var exercise in entry.Exercises)
+                                                {
+                                                    <li>
+                                                        @exercise.Name
+                                                        @if (exercise.Sets > 0 || exercise.Reps > 0)
+                                                        {
+                                                            <span> - @exercise.Sets sets x @exercise.Reps reps</span>
+                                                        }
+                                                        @if (exercise.WeightKg > 0)
+                                                        {
+                                                            <span>, @exercise.WeightKg.ToString("0.##") kg</span>
+                                                        }
+                                                        @if (exercise.DistanceKm > 0)
+                                                        {
+                                                            <span>, @exercise.DistanceKm.ToString("0.##") km</span>
+                                                        }
+                                                        @if (exercise.Time > TimeSpan.Zero)
+                                                        {
+                                                            <span>, @exercise.Time.TotalMinutes.ToString("0") min</span>
+                                                        }
+                                                    </li>
+                                                }
+                                            </ul>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .workout-chart {
+        display: flex;
+        align-items: flex-end;
+        gap: 1rem;
+        min-height: 18rem;
+        overflow-x: auto;
+        padding-bottom: 0.5rem;
+    }
+
+    .workout-chart-column {
+        min-width: 4.75rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .workout-chart-value,
+    .workout-chart-date,
+    .workout-chart-intensity,
+    .workout-chart-key {
+        font-size: 0.85rem;
+    }
+
+    .workout-chart-track {
+        height: 14rem;
+        width: 100%;
+        display: flex;
+        align-items: flex-end;
+        padding: 0.3rem;
+        border-radius: 1rem;
+        background: linear-gradient(180deg, #f8fafc, #e9eef5);
+        box-shadow: inset 0 0 0 1px rgba(28, 44, 64, 0.08);
+    }
+
+    .workout-chart-bar {
+        width: 100%;
+        min-height: 2.5rem;
+        border-radius: 0.9rem 0.9rem 0.75rem 0.75rem;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 0.45rem;
+        color: white;
+        font-weight: 700;
+        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+        box-shadow: 0 10px 24px rgba(31, 41, 55, 0.16);
+    }
+
+    .workout-chart-label {
+        font-size: 0.8rem;
+    }
+
+    .workout-detail-grid {
+        display: grid;
+        gap: 0.5rem;
+    }
+</style>
+
+@code {
+    private sealed class WorkoutFormModel
+    {
+        [Required]
+        public DateOnly WorkoutDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+
+        [Required]
+        public TimeOnly StartTime { get; set; } = new(18, 0);
+
+        [Range(1, 600)]
+        public int DurationMinutes { get; set; } = 45;
+
+        [Range(0, 5)]
+        public int SelfReportedIntensity { get; set; } = 2;
+
+        [Range(30, 240)]
+        public int AverageHeartRate { get; set; } = 120;
+
+        [Required]
+        public WorkoutType WorkoutType { get; set; } = WorkoutType.StrengthTraining;
+
+        [StringLength(1000)]
+        public string Notes { get; set; } = "";
+
+        public List<ExerciseFormModel> Exercises { get; set; } = [];
+    }
+
+    private sealed class ExerciseFormModel
+    {
+        [StringLength(100)]
+        public string Name { get; set; } = "";
+
+        [Range(0, 100)]
+        public int Sets { get; set; }
+
+        [Range(0, 500)]
+        public int Reps { get; set; }
+
+        [Range(0, 2000)]
+        public float WeightKg { get; set; }
+
+        [Range(0, 2000)]
+        public float DistanceKm { get; set; }
+
+        [Range(0, 1440)]
+        public int DurationMinutes { get; set; }
+    }
+
+    private readonly WorkoutType[] workoutTypes = Enum.GetValues<WorkoutType>()
+        .Where(w => w != WorkoutType.Undefined)
+        .ToArray();
+
+    private WorkoutFormModel model = new();
+    private List<WorkoutEntry> entries = [];
+    private int? expandedEntryId;
+    private string? message;
+    private IEnumerable<WorkoutEntry> ChartEntries => entries.OrderBy(e => e.StartedAt);
+    private int MaxDurationMinutes => entries.Count == 0 ? 1 : entries.Max(e => e.DurationMinutes);
+
+    protected override async Task OnInitializedAsync()
+    {
+        AddExerciseRow();
+        await LoadEntriesAsync();
+    }
+
+    private async Task SaveWorkoutAsync()
+    {
+        var userId = await GetUserIdAsync();
+        var startedAt = model.WorkoutDate.ToDateTime(model.StartTime);
+
+        var entry = new WorkoutEntry
+        {
+            UserId = userId,
+            StartedAt = startedAt,
+            DurationMinutes = model.DurationMinutes,
+            SelfReportedIntensity = (byte)model.SelfReportedIntensity,
+            AverageHeartRate = model.AverageHeartRate,
+            WorkoutType = model.WorkoutType,
+            Notes = model.Notes.Trim(),
+            Exercises = model.Exercises
+                .Where(e => !string.IsNullOrWhiteSpace(e.Name))
+                .Select(e => new ExerciseEntry
+                {
+                    Name = e.Name.Trim(),
+                    Sets = e.Sets,
+                    Reps = e.Reps,
+                    WeightKg = e.WeightKg,
+                    DistanceKm = e.DistanceKm,
+                    Time = TimeSpan.FromMinutes(e.DurationMinutes)
+                })
+                .ToList()
+        };
+
+        await WorkoutStore.AddAsync(entry);
+        message = "Workout saved.";
+
+        model = new WorkoutFormModel();
+        AddExerciseRow();
+        await LoadEntriesAsync();
+    }
+
+    private async Task DeleteWorkoutAsync(int id)
+    {
+        var userId = await GetUserIdAsync();
+        var workout = await WorkoutStore.GetAsync(id);
+        if (workout is null || workout.UserId != userId)
+        {
+            message = "Workout not found.";
+            return;
+        }
+
+        await WorkoutStore.DeleteAsync(id);
+
+        if (expandedEntryId == id)
+        {
+            expandedEntryId = null;
+        }
+
+        message = "Workout deleted.";
+        await LoadEntriesAsync();
+    }
+
+    private async Task LoadEntriesAsync()
+    {
+        var userId = await GetUserIdAsync();
+        var to = DateTime.Today.AddDays(1).AddTicks(-1);
+        var from = DateTime.Today.AddDays(-29);
+
+        entries = await WorkoutStore.ListForUserAsync(userId, from, to);
+    }
+
+    private async Task<Guid> GetUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(userIdClaim, out var userId) ? userId : Guid.Empty;
+    }
+
+    private void AddExerciseRow() => model.Exercises.Add(new ExerciseFormModel());
+
+    private void ToggleDetails(int id) => expandedEntryId = expandedEntryId == id ? null : id;
+
+    private void RemoveExerciseRow(int index)
+    {
+        if (index >= 0 && index < model.Exercises.Count)
+        {
+            model.Exercises.RemoveAt(index);
+        }
+    }
+
+    private static string ToDisplayName(WorkoutType workoutType) => workoutType switch
+    {
+        WorkoutType.StrengthTraining => "Strength Training",
+        WorkoutType.HighIntensityIntervalTraining => "HIIT",
+        _ => workoutType.ToString()
+    };
+
+    private static string ToIntensityLabel(int intensity) => intensity switch
+    {
+        0 => "Low",
+        1 => "Easy",
+        2 => "Steady",
+        3 => "Moderate",
+        4 => "Hard",
+        5 => "High",
+        _ => "Unknown"
+    };
+
+    private static string ToIntensityLabel(byte intensity) => ToIntensityLabel((int)intensity);
+
+    private static string FormatHeartRate(WorkoutEntry entry) =>
+        entry.AverageHeartRate > 0 ? $"{entry.AverageHeartRate} bpm" : "--";
+
+    private string GetBarStyle(WorkoutEntry entry)
+    {
+        var height = Math.Max(16, (int)Math.Round(entry.DurationMinutes * 100.0 / MaxDurationMinutes));
+        return $"height: {height}%; background: {GetIntensityColor(entry.SelfReportedIntensity)};";
+    }
+
+    private static string GetChartTooltip(WorkoutEntry entry) =>
+        $"{entry.StartedAt:MMM dd}: {entry.DurationMinutes} min, intensity {entry.SelfReportedIntensity}/5, {FormatHeartRate(entry)}";
+
+    private static string GetIntensityColor(byte intensity)
+    {
+        var clamped = Math.Clamp(intensity, (byte)0, (byte)5);
+        var hue = 120 - (clamped * 24);
+        return $"linear-gradient(180deg, hsl({hue} 72% 56%), hsl({Math.Max(0, hue - 12)} 70% 42%))";
+    }
+}

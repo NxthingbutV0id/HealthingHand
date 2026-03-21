@@ -16,5 +16,4 @@ public class UserEntry
     public byte Age { get; set; }
     public Sex Sex { get; set; } = Sex.Undefined;
     public float HeightM { get; set; }
-    public float WeightKg { get; set; } //TODO: Remove this, weight should be tracked in WeightEntry
 }

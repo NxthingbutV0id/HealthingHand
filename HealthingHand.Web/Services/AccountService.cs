@@ -20,8 +20,7 @@ public interface IAccountService
         string password,
         byte age,
         Sex sex,
-        float heightM,
-        float weightKg);
+        float heightM);
 
     Task<(bool Success, string? Error)> SignInAsync(string email, string password);
 
@@ -33,12 +32,19 @@ public interface IAccountService
         string displayName,
         byte age,
         Sex sex,
-        float heightM,
-        float weightKg);
+        float heightM);
 
     Task<(bool Success, string? Error)> ChangePasswordAsync(string currentPassword, string newPassword);
     
     Task<UserEntry?> AuthenticateAsync(string email, string password);
+    
+    Task<(bool Success, string? Error)> DeleteCurrentAccountAsync(Guid userId, string currentPassword);
+    
+    Task<UserEntry?> GetByIdAsync(Guid userId);
+
+    Task<(bool Success, string? Error, UserEntry? User)> UpdateDisplayNameAsync(Guid userId, string displayName);
+
+    Task<(bool Success, string? Error)> DeleteAccountAsync(Guid userId, string currentPassword);
 }
 
 public class AccountService(IAccountStore accounts) : IAccountService
@@ -65,7 +71,6 @@ public class AccountService(IAccountStore accounts) : IAccountService
                 Age = 20,
                 Sex = Sex.Male,
                 HeightM = 1.75f,
-                WeightKg = 70f,
                 CreationDate = DateTime.UtcNow,
                 LastOnline = DateTime.UtcNow
             };
@@ -87,8 +92,7 @@ public class AccountService(IAccountStore accounts) : IAccountService
         string password,
         byte age,
         Sex sex,
-        float heightM,
-        float weightKg)
+        float heightM)
     {
         email = NormalizeEmail(email);
         displayName = displayName.Trim();
@@ -99,8 +103,8 @@ public class AccountService(IAccountStore accounts) : IAccountService
             return (false, "Display name is required.");
         if (!IsPasswordStrongEnough(password))
             return (false, "Password must be at least 8 characters.");
-        if (heightM <= 0 || weightKg <= 0)
-            return (false, "Height and weight must be positive.");
+        if (heightM <= 0)
+            return (false, "Height must be positive.");
 
         var existing = await accounts.GetByEmailAsync(email);
         if (existing is not null)
@@ -114,7 +118,6 @@ public class AccountService(IAccountStore accounts) : IAccountService
             Age = age,
             Sex = sex,
             HeightM = heightM,
-            WeightKg = weightKg,
             CreationDate = DateTime.UtcNow,
             LastOnline = DateTime.UtcNow
         };
@@ -167,8 +170,7 @@ public class AccountService(IAccountStore accounts) : IAccountService
         string displayName,
         byte age,
         Sex sex,
-        float heightM,
-        float weightKg)
+        float heightM)
     {
         if (CurrentUser is null)
             return (false, "Not signed in.");
@@ -176,14 +178,13 @@ public class AccountService(IAccountStore accounts) : IAccountService
         displayName = displayName.Trim();
         if (string.IsNullOrWhiteSpace(displayName))
             return (false, "Display name is required.");
-        if (heightM <= 0 || weightKg <= 0)
-            return (false, "Height and weight must be positive.");
+        if (heightM <= 0)
+            return (false, "Height must be positive.");
 
         CurrentUser.DisplayName = displayName;
         CurrentUser.Age = age;
         CurrentUser.Sex = sex;
         CurrentUser.HeightM = heightM;
-        CurrentUser.WeightKg = weightKg;
 
         await accounts.UpdateAsync(CurrentUser);
         AuthStateChanged?.Invoke();
@@ -224,6 +225,74 @@ public class AccountService(IAccountStore accounts) : IAccountService
 
         await accounts.UpdateAsync(user);
         return user;
+    }
+    
+    public async Task<(bool Success, string? Error)> DeleteCurrentAccountAsync(Guid userId, string currentPassword)
+    {
+        if (string.IsNullOrWhiteSpace(currentPassword))
+            return (false, "Password is required.");
+    
+        var user = await accounts.GetAsync(userId);
+        if (user is null)
+            return (false, "Account not found.");
+    
+        if (!VerifyPassword(user.PasswordHash, currentPassword))
+            return (false, "Current password is incorrect.");
+    
+        await accounts.DeleteAsync(userId);
+
+        if (CurrentUser?.Id != userId) return (true, null);
+        CurrentUser = null;
+        AuthStateChanged?.Invoke();
+
+        return (true, null);
+    }
+    
+    public Task<UserEntry?> GetByIdAsync(Guid userId)
+    {
+        return accounts.GetAsync(userId);
+    }
+
+    public async Task<(bool Success, string? Error, UserEntry? User)> UpdateDisplayNameAsync(Guid userId, string displayName)
+    {
+        displayName = displayName.Trim();
+
+        if (string.IsNullOrWhiteSpace(displayName))
+            return (false, "Display name is required.", null);
+
+        var user = await accounts.GetAsync(userId);
+        if (user is null)
+            return (false, "Account not found.", null);
+
+        user.DisplayName = displayName;
+        await accounts.UpdateAsync(user);
+
+        if (CurrentUser?.Id != userId) return (true, null, user);
+        CurrentUser = user;
+        AuthStateChanged?.Invoke();
+
+        return (true, null, user);
+    }
+
+    public async Task<(bool Success, string? Error)> DeleteAccountAsync(Guid userId, string currentPassword)
+    {
+        if (string.IsNullOrWhiteSpace(currentPassword))
+            return (false, "Current password is required.");
+
+        var user = await accounts.GetAsync(userId);
+        if (user is null)
+            return (false, "Account not found.");
+
+        if (!VerifyPassword(user.PasswordHash, currentPassword))
+            return (false, "Current password is incorrect.");
+
+        await accounts.DeleteAsync(userId);
+
+        if (CurrentUser?.Id != userId) return (true, null);
+        CurrentUser = null;
+        AuthStateChanged?.Invoke();
+
+        return (true, null);
     }
 
     private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();

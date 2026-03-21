@@ -1,0 +1,109 @@
+@page "/user"
+@attribute [Authorize]
+
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@inject NavigationManager Nav
+
+<PageTitle>User Settings</PageTitle>
+
+<h1>User Settings</h1>
+<p>Update your display name or permanently delete your account.</p>
+
+@if (!string.IsNullOrWhiteSpace(SuccessMessage))
+{
+    <div class="alert alert-success">@SuccessMessage</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(ErrorMessage))
+{
+    <div class="alert alert-danger">@ErrorMessage</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(DeleteErrorMessage))
+{
+    <div class="alert alert-danger">@DeleteErrorMessage</div>
+}
+
+<div class="card mb-4">
+    <div class="card-header">Profile</div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input class="form-control" value="@Email" readonly />
+        </div>
+
+        <form method="post" action="/auth/update-display-name">
+            <div class="mb-3">
+                <label class="form-label">Display Name</label>
+                <input class="form-control" name="DisplayName" value="@DisplayName" required />
+            </div>
+
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+        </form>
+    </div>
+</div>
+
+<div class="card border-danger">
+    <div class="card-header text-danger">Danger Zone</div>
+    <div class="card-body">
+        <p class="mb-3">
+            Deleting your account is permanent. Your related data will be removed with it.
+        </p>
+
+        <form method="post" action="/auth/delete-account">
+            <div class="mb-3">
+                <label class="form-label">Current Password</label>
+                <input class="form-control" type="password" name="CurrentPassword" required />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Type DELETE to confirm</label>
+                <input class="form-control" name="Confirmation" required />
+            </div>
+
+            <button type="submit" class="btn btn-danger">Delete Account</button>
+        </form>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+
+    private string Email = "";
+    private string DisplayName = "";
+
+    private string? SuccessMessage;
+    private string? ErrorMessage;
+    private string? DeleteErrorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateTask;
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated != true)
+        {
+            Nav.NavigateTo("/login", forceLoad: true);
+            return;
+        }
+
+        Email = user.FindFirst(ClaimTypes.Email)?.Value ?? "";
+        DisplayName = user.Identity?.Name ?? "";
+
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var query = QueryHelpers.ParseQuery(uri.Query);
+
+        if (query.TryGetValue("success", out var success))
+            SuccessMessage = Uri.UnescapeDataString(success.ToString());
+
+        if (query.TryGetValue("error", out var error))
+            ErrorMessage = Uri.UnescapeDataString(error.ToString());
+
+        if (query.TryGetValue("deleteError", out var deleteError))
+            DeleteErrorMessage = Uri.UnescapeDataString(deleteError.ToString());
+    }
+}

@@ -1,9 +1,11 @@
 ﻿using System.Reflection;
 using HealthingHand.Data.Entries;
 using HealthingHand.Data.Persistence;
+using HealthingHand.Data.Stores;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.AspNetCore.Identity;
 
 namespace HealthingHand.Data.Tests;
 
@@ -11,6 +13,7 @@ public sealed class UnitTest1 : IDisposable
 {
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<AppDbContext> _options;
+    private readonly IDbContextFactory<AppDbContext> _factory;
 
     public UnitTest1()
     {
@@ -23,6 +26,8 @@ public sealed class UnitTest1 : IDisposable
 
         using var db = new AppDbContext(_options);
         db.Database.Migrate();
+        
+        _factory = new TestDbContextFactory(_options);
     }
 
     public void Dispose()
@@ -43,6 +48,35 @@ public sealed class UnitTest1 : IDisposable
         var applied = db.Database.GetAppliedMigrations().ToList();
 
         Assert.NotEmpty(applied);
+    }
+    
+    /// <summary>
+    /// This test is used to check that the database migrations are applied as expected.
+    /// </summary>
+    [Fact]
+    public void Debug_ListAppliedMigrations_And_UserColumns()
+    {
+        using var db = new AppDbContext(_options);
+
+        var allMigrations = db.Database.GetMigrations().ToList();
+        var appliedMigrations = db.Database.GetAppliedMigrations().ToList();
+
+        Assert.True(allMigrations.Count > 0);
+
+        // This is the key check:
+        Assert.Contains(allMigrations, m => m.Contains("RemoveUserWeightKg"));
+        Assert.Contains(appliedMigrations, m => m.Contains("RemoveUserWeightKg"));
+
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "PRAGMA table_info('Users');";
+
+        using var reader = cmd.ExecuteReader();
+        var columns = new List<string>();
+
+        while (reader.Read())
+            columns.Add(reader.GetString(1)); // column name
+
+        Assert.DoesNotContain("WeightKg", columns);
     }
 
     /// <summary>
@@ -231,6 +265,362 @@ public sealed class UnitTest1 : IDisposable
     [Fact]
     public void WorkoutEntry_CRUD_AddGetUpdateDelete_Works() => EntryCrudWorks("Workout");
 
+    
+    /// <summary>
+    /// This test is to check the login functionality by creating a user with a known password
+    /// then retrieving that user and verifying the password.
+    /// </summary>
+    [Fact]
+    public void UserLoginTestValid()
+    {
+        using var db = new AppDbContext(_options);
+
+        var meta = GetUserMeta(db);
+
+        var email = $"login_{Guid.NewGuid():N}@example.com";
+        const string password = "CorrectPassword123!";
+        const string display = "Login User";
+
+        var user = CreateUserInstance(meta, email, display);
+        SetUserPassword(user, meta, password);
+
+        db.Add(user);
+        db.SaveChanges();
+        db.ChangeTracker.Clear();
+
+        var found = db.Users.SingleOrDefault(u => u.Email == email);
+
+        Assert.NotNull(found);
+        Assert.True(VerifyUserPassword(found, meta, password));
+    }
+    
+    /// <summary>
+    /// This test is the same as UserLoginTestValid with the difference that
+    /// it verifies that an incorrect password does not validate successfully
+    /// </summary>
+    [Fact]
+    public void UserLoginTestInvalid()
+    {
+        using var db = new AppDbContext(_options);
+
+        var meta = GetUserMeta(db);
+
+        var email = $"badlogin_{Guid.NewGuid():N}@example.com";
+        const string correctPassword = "CorrectPassword123!";
+        const string wrongPassword = "WrongPassword123!";
+        const string display = "Invalid Login User";
+
+        var user = CreateUserInstance(meta, email, display);
+        SetUserPassword(user, meta, correctPassword);
+
+        db.Add(user);
+        db.SaveChanges();
+        db.ChangeTracker.Clear();
+
+        var found = db.Users.SingleOrDefault(u => u.Email == email);
+
+        Assert.NotNull(found);
+        Assert.False(VerifyUserPassword(found, meta, wrongPassword));
+    }
+    
+    /// <summary>
+    /// This test checks for registering a new user with a unique email
+    /// and ensures that the user is created successfully with the correct field values,
+    /// and that the password is stored (hashed if applicable) in the database.
+    /// </summary>
+    [Fact]
+    public void UserRegisterTestValid()
+    {
+        using var db = new AppDbContext(_options);
+
+        var meta = GetUserMeta(db);
+
+        var email = $"register_{Guid.NewGuid():N}@example.com";
+        const string password = "RegisterPassword123!";
+        const string display = "Registered User";
+
+        var user = CreateUserInstance(meta, email, display);
+        SetUserPassword(user, meta, password);
+
+        db.Add(user);
+        db.SaveChanges();
+        db.ChangeTracker.Clear();
+
+        var found = db.Users.SingleOrDefault(u => u.Email == email);
+
+        Assert.NotNull(found);
+        Assert.Equal(email, GetPropValue(found, meta.EmailPropName) as string);
+        Assert.Equal(display, GetPropValue(found, meta.DisplayNamePropName) as string);
+
+        if (string.IsNullOrWhiteSpace(meta.PasswordPropName)) return;
+        var storedPassword = GetPropValue(found, meta.PasswordPropName!) as string;
+        Assert.False(string.IsNullOrWhiteSpace(storedPassword));
+    }
+    
+    /// <summary>
+    /// This test is similar to the UserRegisterTestValid() but attempts to create two users with the same email address
+    /// </summary>
+    [Fact]
+    public void UserRegisterTestInvalid()
+    {
+        using var db = new AppDbContext(_options);
+
+        var meta = GetUserMeta(db);
+
+        var email = $"dupe_register_{Guid.NewGuid():N}@example.com";
+
+        var user1 = CreateUserInstance(meta, email, "User One");
+        var user2 = CreateUserInstance(meta, email, "User Two");
+
+        SetUserPassword(user1, meta, "Password123!");
+        SetUserPassword(user2, meta, "AnotherPassword123!");
+
+        db.Add(user1);
+        db.Add(user2);
+
+        Assert.Throws<DbUpdateException>(() => db.SaveChanges());
+    }
+    
+    /// <summary>
+    /// This test is to verify that deleting a user from the database works correctly, and that after deletion,
+    /// the user is unable to login
+    /// </summary>
+    [Fact]
+    public void UserDeletionTest()
+    {
+        using var db = new AppDbContext(_options);
+
+        var meta = GetUserMeta(db);
+
+        var email = $"delete_login_{Guid.NewGuid():N}@example.com";
+        const string password = "DeleteMe123!";
+        const string display = "Delete Me";
+
+        var user = CreateUserInstance(meta, email, display);
+        SetUserPassword(user, meta, password);
+
+        db.Add(user);
+        db.SaveChanges();
+
+        db.Remove(user);
+        db.SaveChanges();
+        db.ChangeTracker.Clear();
+
+        var found = db.Users.SingleOrDefault(u => u.Email == email);
+
+        Assert.Null(found);
+    }
+    
+    /// <summary>
+    /// This test verifies that the DietStore's AddWithItemsAsync method correctly saves a DietEntry
+    /// along with its associated MealItemEntries to the database.
+    /// </summary>
+    [Fact]
+    public async Task AddWithItemsAsync_PersistsMealAndItems()
+    {
+        await using var db = new AppDbContext(_options);
+
+        var user = MakeUser("diet1@example.com");
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var store = new DietStore(_factory);
+
+        var meal = new DietEntry
+        {
+            UserId = user.Id,
+            EatenAt = DateTime.UtcNow,
+            MealType = "Lunch",
+            Notes = "Post-workout meal"
+        };
+
+        var items = new[]
+        {
+            new MealItemEntry
+            {
+                Name = "Chicken",
+                Quantity = 200,
+                Unit = "g",
+                Calories = 330,
+                ProteinGrams = 62,
+                CarbsGrams = 0,
+                FatGrams = 7
+            },
+            new MealItemEntry
+            {
+                Name = "Rice",
+                Quantity = 150,
+                Unit = "g",
+                Calories = 195,
+                ProteinGrams = 4,
+                CarbsGrams = 42,
+                FatGrams = 0.5f
+            }
+        };
+
+        var mealId = await store.AddWithItemsAsync(meal, items);
+        var saved = await store.GetWithItemsAsync(mealId);
+
+        Assert.NotNull(saved);
+        Assert.Equal(user.Id, saved.UserId);
+        Assert.Equal("Lunch", saved.MealType);
+        Assert.Equal(2, saved.Items.Count);
+        Assert.Contains(saved.Items, i => i.Name == "Chicken");
+        Assert.Contains(saved.Items, i => i.Name == "Rice");
+    }
+
+    /// <summary>
+    /// This test is to ensure that when listing diet entries for a specific user,
+    /// only the meals associated with that user are returned
+    /// </summary>
+    [Fact]
+    public async Task ListForUserAsync_ReturnsOnlyThatUsersMeals()
+    {
+        await using var db = new AppDbContext(_options);
+
+        var user1 = MakeUser("diet2a@example.com");
+        var user2 = MakeUser("diet2b@example.com");
+
+        db.Users.AddRange(user1, user2);
+        await db.SaveChangesAsync();
+
+        db.DietEntries.AddRange(
+            new DietEntry
+            {
+                UserId = user1.Id,
+                EatenAt = new DateTime(2026, 3, 16, 12, 0, 0, DateTimeKind.Utc),
+                MealType = "Lunch",
+                Notes = "User1 meal"
+            },
+            new DietEntry
+            {
+                UserId = user2.Id,
+                EatenAt = new DateTime(2026, 3, 16, 13, 0, 0, DateTimeKind.Utc),
+                MealType = "Lunch",
+                Notes = "User2 meal"
+            });
+
+        await db.SaveChangesAsync();
+
+        var store = new DietStore(_factory);
+
+        var results = await store.ListForUserAsync(
+            user1.Id,
+            new DateTime(2026, 3, 16, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 3, 16, 23, 59, 59, DateTimeKind.Utc),
+            includeItems: false);
+
+        Assert.Single(results);
+        Assert.Equal(user1.Id, results[0].UserId);
+        Assert.Equal("User1 meal", results[0].Notes);
+    }
+
+    /// <summary>
+    /// This test checks to see if the DietStore's UpdateWithItemsAsync method correctly updates the fields of a DietEntry
+    /// </summary>
+    [Fact]
+    public async Task UpdateWithItemsAsync_ReplacesItemsAndUpdatesMealFields()
+    {
+        var store = new DietStore(_factory);
+
+        await using var db = new AppDbContext(_options);
+        var user = MakeUser("diet3@example.com");
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var originalMeal = new DietEntry
+        {
+            UserId = user.Id,
+            EatenAt = new DateTime(2026, 3, 16, 8, 0, 0, DateTimeKind.Utc),
+            MealType = "Breakfast",
+            Notes = "Original"
+        };
+
+        var originalItems = new[]
+        {
+            new MealItemEntry
+            {
+                Name = "Oats",
+                Quantity = 1,
+                Unit = "cup",
+                Calories = 300,
+                ProteinGrams = 10,
+                CarbsGrams = 54,
+                FatGrams = 5
+            }
+        };
+
+        var mealId = await store.AddWithItemsAsync(originalMeal, originalItems);
+
+        var updatedMeal = new DietEntry
+        {
+            Id = mealId,
+            UserId = user.Id,
+            EatenAt = new DateTime(2026, 3, 16, 9, 0, 0, DateTimeKind.Utc),
+            MealType = "Brunch",
+            Notes = "Updated"
+        };
+
+        var newItems = new[]
+        {
+            new MealItemEntry
+            {
+                Name = "Eggs",
+                Quantity = 3,
+                Unit = "count",
+                Calories = 210,
+                ProteinGrams = 18,
+                CarbsGrams = 1,
+                FatGrams = 15
+            }
+        };
+
+        await store.UpdateWithItemsAsync(updatedMeal, newItems);
+
+        var saved = await store.GetWithItemsAsync(mealId);
+
+        Assert.NotNull(saved);
+        Assert.Equal("Brunch", saved.MealType);
+        Assert.Equal("Updated", saved.Notes);
+        Assert.Single(saved.Items);
+        Assert.Equal("Eggs", saved.Items[0].Name);
+    }
+
+    // ----------------------------
+    // Metadata + reflection helpers
+    // ----------------------------
+
+    private sealed record UserMeta(
+        Type UserClrType,
+        string KeyPropName,
+        string EmailPropName,
+        string DisplayNamePropName,
+        string? PasswordPropName);
+    
+    private sealed class TestDbContextFactory(DbContextOptions<AppDbContext> options)
+        : IDbContextFactory<AppDbContext>
+    {
+        public AppDbContext CreateDbContext() => new(options);
+
+        public Task<AppDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(CreateDbContext());
+    }
+
+    private sealed record EntryMeta(Type EntryClrType, string KeyPropName, string? UserFkPropName, string MutablePropName);
+
+    private static UserEntry MakeUser(string email) => new()
+    {
+        Id = Guid.NewGuid(),
+        Email = email,
+        DisplayName = "Test User",
+        PasswordHash = "testhash",
+        CreationDate = DateTime.UtcNow,
+        LastOnline = DateTime.UtcNow,
+        Age = 20,
+        Sex = Sex.Undefined,
+        HeightM = 1.75f
+    };
+    
     private void EntryCrudWorks(string kind)
     {
         using var db = new AppDbContext(_options);
@@ -284,15 +674,7 @@ public sealed class UnitTest1 : IDisposable
         var deleted = db.Find(entryMeta.EntryClrType, entryKey);
         Assert.Null(deleted);
     }
-
-    // ----------------------------
-    // Metadata + reflection helpers
-    // ----------------------------
-
-    private sealed record UserMeta(Type UserClrType, string KeyPropName, string EmailPropName, string DisplayNamePropName);
-
-    private sealed record EntryMeta(Type EntryClrType, string KeyPropName, string? UserFkPropName, string MutablePropName);
-
+    
     private static UserMeta GetUserMeta(AppDbContext db)
     {
         var entityTypes = db.Model.GetEntityTypes().ToList();
@@ -322,15 +704,67 @@ public sealed class UnitTest1 : IDisposable
 
         var keyPropName = key.Properties[0].Name;
 
-        // Resolve Email property name
         var emailPropName = PickFirstExistingProperty(userEntity.ClrType, "Email", "EmailAddress")
                             ?? throw new InvalidOperationException("User entity does not contain an Email or EmailAddress property.");
 
-        // Resolve display name property name (fallbacks)
         var displayNamePropName = PickFirstExistingProperty(userEntity.ClrType, "DisplayName", "Name", "Username")
                                   ?? throw new InvalidOperationException("User entity does not contain DisplayName/Name/Username property. Add one or update the test.");
 
-        return new UserMeta(userEntity.ClrType, keyPropName, emailPropName, displayNamePropName);
+        var passwordPropName = PickFirstExistingProperty(
+            userEntity.ClrType,
+            "PasswordHash",
+            "HashedPassword",
+            "Password");
+
+        return new UserMeta(userEntity.ClrType, keyPropName, emailPropName, displayNamePropName, passwordPropName);
+    }
+    
+    private static void SetUserPassword(object user, UserMeta meta, string rawPassword)
+    {
+        if (string.IsNullOrWhiteSpace(meta.PasswordPropName))
+            return;
+
+        var prop = user.GetType().GetProperty(meta.PasswordPropName!, BindingFlags.Instance | BindingFlags.Public)
+                   ?? throw new InvalidOperationException(
+                       $"Password property '{meta.PasswordPropName}' not found on type '{user.GetType().Name}'.");
+
+        string storedValue;
+
+        // If the property name suggests a hash, hash it.
+        if (prop.Name.Contains("Hash", StringComparison.OrdinalIgnoreCase))
+        {
+            var hasher = new PasswordHasher<object>();
+            storedValue = hasher.HashPassword(user, rawPassword);
+        }
+        else
+        {
+            storedValue = rawPassword;
+        }
+
+        prop.SetValue(user, storedValue);
+    }
+
+    private static bool VerifyUserPassword(object user, UserMeta meta, string rawPassword)
+    {
+        if (string.IsNullOrWhiteSpace(meta.PasswordPropName))
+            throw new InvalidOperationException(
+                "No Password/PasswordHash property was found on the User entity, so login tests cannot verify credentials.");
+
+        var stored = GetPropValue(user, meta.PasswordPropName!) as string;
+
+        if (string.IsNullOrWhiteSpace(stored))
+            return false;
+
+        // Plaintext fallback
+        if (stored == rawPassword)
+            return true;
+
+        // Identity hash fallback
+        var hasher = new PasswordHasher<object>();
+        var result = hasher.VerifyHashedPassword(user, stored, rawPassword);
+
+        return result == PasswordVerificationResult.Success ||
+               result == PasswordVerificationResult.SuccessRehashNeeded;
     }
 
     private static EntryMeta GetEntryMeta(AppDbContext db, string kind, UserMeta userMeta)
@@ -462,7 +896,6 @@ public sealed class UnitTest1 : IDisposable
         var user = Activator.CreateInstance(meta.UserClrType)
                    ?? throw new InvalidOperationException($"Could not create instance of {meta.UserClrType.FullName} (missing public parameterless constructor?).");
 
-        // If key is Guid and currently empty, set it so we can reliably Find() later.
         var keyProp = meta.UserClrType.GetProperty(meta.KeyPropName, BindingFlags.Instance | BindingFlags.Public);
         if (keyProp is not null && keyProp.PropertyType == typeof(Guid))
         {
@@ -473,6 +906,9 @@ public sealed class UnitTest1 : IDisposable
 
         SetPropValue(user, meta.EmailPropName, email);
         SetPropValue(user, meta.DisplayNamePropName, displayName);
+
+        // Set a default password if the entity has a password property.
+        SetUserPassword(user, meta, "DefaultTestPassword123!");
 
         return user;
     }
@@ -504,7 +940,7 @@ public sealed class UnitTest1 : IDisposable
             // Fall back to navigation property if a scalar FK wasn't discovered.
             var nav = meta.EntryClrType
                 .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-                .FirstOrDefault(p => p.CanWrite && p.PropertyType.IsAssignableFrom(userInstance.GetType()));
+                .FirstOrDefault(p => p.CanWrite && p.PropertyType.IsInstanceOfType(userInstance));
 
             nav?.SetValue(entry, userInstance);
         }

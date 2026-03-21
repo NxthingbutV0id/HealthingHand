@@ -1,41 +1,72 @@
 ﻿@page "/register"
+@using Microsoft.AspNetCore.WebUtilities
+@inject NavigationManager Nav
 
-<h3>Register</h3>
+<PageTitle>Register</PageTitle>
 
-@if (!string.IsNullOrWhiteSpace(error))
+<h3>Create Account</h3>
+
+@if (!string.IsNullOrWhiteSpace(ErrorMessage))
 {
-    <p style="color:red;">@error</p>
+    <div class="alert alert-danger">@ErrorMessage</div>
 }
 
 <form method="post" action="/auth/register">
-    <input type="hidden" name="ReturnUrl" value="@ReturnUrl" />
+    <input type="hidden" name="ReturnUrl" value="/" />
 
-    <div><label>Email</label> <input name="Email" /></div>
-    <div><label>Display Name</label> <input name="DisplayName" /></div>
-    <div><label>Password</label> <input name="Password" type="password" /></div>
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Email</label>
+            <input class="form-control" type="email" name="Email" required />
+        </div>
 
-    <div><label>Age</label> <input name="Age" type="number" min="0" max="120" /></div>
-
-    <div>
-        <label>Sex</label>
-        <select name="Sex">
-            <option value="Unspecified">Unspecified</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-        </select>
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Display Name</label>
+            <input class="form-control" type="text" name="DisplayName" required />
+        </div>
     </div>
 
-    <div><label>Height (m)</label> <input name="HeightM" /></div>
-    <div><label>Weight (kg)</label> <input name="WeightKg" /></div>
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Password</label>
+            <input class="form-control" type="password" name="Password" minlength="8" required />
+            <div class="form-text">Must be at least 8 characters.</div>
+        </div>
 
-    <button type="submit">Create account</button>
+        <div class="col-md-3 mb-3">
+            <label class="form-label">Age</label>
+            <input class="form-control" type="number" name="Age" min="1" max="120" required />
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <label class="form-label">Sex</label>
+            <select class="form-select" name="Sex">
+                <option value="Undefined">Prefer not to say</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Height (m)</label>
+            <input class="form-control" type="number" step="0.01" min="0.01" name="HeightM" required />
+        </div>
+    </div>
+
+    <button class="btn btn-primary" type="submit">Register</button>
 </form>
 
-<p><a href="/login">Back to login</a></p>
-
 @code {
-    [SupplyParameterFromQuery] public string? returnUrl { get; set; }
-    [SupplyParameterFromQuery] public string? error { get; set; }
+    private string? ErrorMessage;
 
-    private string ReturnUrl => string.IsNullOrWhiteSpace(returnUrl) ? "/" : returnUrl!;
+    protected override void OnInitialized()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var query = QueryHelpers.ParseQuery(uri.Query);
+
+        if (query.TryGetValue("error", out var error))
+            ErrorMessage = Uri.UnescapeDataString(error.ToString());
+    }
 }
