@@ -441,7 +441,7 @@ public sealed class UnitTest1 : IDisposable
                 Name = "Chicken",
                 Quantity = 200,
                 Unit = "g",
-                Calories = 330,
+                TotalCalories = 330,
                 ProteinGrams = 62,
                 CarbsGrams = 0,
                 FatGrams = 7
@@ -451,7 +451,7 @@ public sealed class UnitTest1 : IDisposable
                 Name = "Rice",
                 Quantity = 150,
                 Unit = "g",
-                Calories = 195,
+                TotalCalories = 195,
                 ProteinGrams = 4,
                 CarbsGrams = 42,
                 FatGrams = 0.5f
@@ -543,7 +543,7 @@ public sealed class UnitTest1 : IDisposable
                 Name = "Oats",
                 Quantity = 1,
                 Unit = "cup",
-                Calories = 300,
+                TotalCalories = 300,
                 ProteinGrams = 10,
                 CarbsGrams = 54,
                 FatGrams = 5
@@ -568,7 +568,7 @@ public sealed class UnitTest1 : IDisposable
                 Name = "Eggs",
                 Quantity = 3,
                 Unit = "count",
-                Calories = 210,
+                TotalCalories = 210,
                 ProteinGrams = 18,
                 CarbsGrams = 1,
                 FatGrams = 15

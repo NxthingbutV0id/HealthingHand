@@ -223,7 +223,7 @@ else
             workoutCount = workoutEntries.Count;
             weightCount = weightEntries.Count;
 
-            weeklyCalories = dietEntries.Sum(meal => meal.Items?.Sum(item => item.Calories) ?? 0);
+            weeklyCalories = dietEntries.Sum(meal => meal.Items?.Sum(item => item.TotalCalories) ?? 0);
             workoutMinutes = workoutEntries.Sum(workout => workout.DurationMinutes);
 
             var latestWeightEntry = weightEntries

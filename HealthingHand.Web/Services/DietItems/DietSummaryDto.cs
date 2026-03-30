@@ -11,4 +11,10 @@ public class DietSummaryDto
     public float TotalCarbsGrams { get; set; }
     public float TotalFatGrams { get; set; }
     public double AverageCaloriesPerMeal { get; set; }
+
+    // New fields
+    public int? DailyCalorieTarget { get; set; }
+    public int? CaloriesRemaining { get; set; }
+    public int CaloriesDelta { get; set; } // positive = over target, negative = under target
+    public string TargetMethodDescription { get; set; } = "";
 }
