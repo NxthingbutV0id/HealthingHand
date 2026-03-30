@@ -46,7 +46,7 @@ public class DietService(
                 Name = i.Name.Trim(),
                 Quantity = i.Quantity,
                 Unit = i.Unit.Trim(),
-                TotalCalories = (int)(i.CaloriesPerUnit * i.Quantity),
+                Calories = (int)(i.CaloriesPerUnit * i.Quantity),
                 ProteinGrams = i.ProteinGrams,
                 CarbsGrams = i.CarbsGrams,
                 FatGrams = i.FatGrams
@@ -73,7 +73,7 @@ public class DietService(
                 MealType = m.MealType,
                 Notes = m.Notes,
                 ItemCount = m.Items.Count,
-                TotalCalories = m.Items.Sum(i => i.TotalCalories),
+                TotalCalories = m.Items.Sum(i => i.Calories),
                 TotalProteinGrams = m.Items.Sum(i => i.ProteinGrams),
                 TotalCarbsGrams = m.Items.Sum(i => i.CarbsGrams),
                 TotalFatGrams = m.Items.Sum(i => i.FatGrams)
@@ -109,7 +109,7 @@ public class DietService(
 
         var mealCount = meals.Count;
         var itemCount = meals.Sum(m => m.Items.Count);
-        var totalCalories = meals.Sum(m => m.Items.Sum(i => i.TotalCalories));
+        var totalCalories = meals.Sum(m => m.Items.Sum(i => i.Calories));
         var totalProtein = meals.Sum(m => m.Items.Sum(i => i.ProteinGrams));
         var totalCarbs = meals.Sum(m => m.Items.Sum(i => i.CarbsGrams));
         var totalFat = meals.Sum(m => m.Items.Sum(i => i.FatGrams));
@@ -127,7 +127,7 @@ public class DietService(
             TotalCarbsGrams = totalCarbs,
             TotalFatGrams = totalFat,
             AverageCaloriesPerMeal = mealCount == 0 ? 0 : (double)totalCalories / mealCount,
-
+            CaloriesDelta = target is null ? 0 : totalCalories - target.Value,
             DailyCalorieTarget = target,
             CaloriesRemaining = target - totalCalories,
             TargetMethodDescription = target is null

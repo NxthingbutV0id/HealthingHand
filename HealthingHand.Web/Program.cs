@@ -31,12 +31,12 @@ internal class Program // Personally, I prefer an explicit main method - CT
                 options.LoginPath = "/login";
                 options.LogoutPath = "/auth/logout";
                 options.AccessDeniedPath = "/login";
-
-                // Change to 10 for final submission
-                options.ExpireTimeSpan = TimeSpan.FromMinutes(1);
+                
+                // Default Time is 10 minutes.
+                options.ExpireTimeSpan = TimeSpan.FromMinutes(10);
 
                 // Turn this OFF while testing so the timeout is easier to observe
-                options.SlidingExpiration = false;
+                options.SlidingExpiration = true;
 
                 options.Cookie.HttpOnly = true;
                 options.Cookie.SameSite = SameSiteMode.Lax;

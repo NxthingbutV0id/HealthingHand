@@ -5,11 +5,14 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using HealthingHand.Data.Entries
+@using HealthingHand.Web.Services
+@using HealthingHand.Web.Services.DietItems
 
 @attribute [Authorize]
 
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IDatabase Database
+@inject IDietService DietService
 
 <PageTitle>Dashboard</PageTitle>
 
@@ -50,6 +53,35 @@ else
                 <h3>Nutrition</h3>
                 <div class="card-number">@dietCount</div>
                 <p>@dietSummary</p>
+
+                <div class="nutrition-target-block">
+                    <p><strong>Today:</strong> @todayDiet.TotalCalories cal</p>
+
+                    @if (todayDiet.DailyCalorieTarget is not null)
+                    {
+                        <p><strong>Target:</strong> @todayDiet.DailyCalorieTarget cal</p>
+
+                        @if (todayDiet.CaloriesRemaining is not null && todayDiet.CaloriesRemaining >= 0)
+                        {
+                            <p class="dashboard-muted">@todayDiet.CaloriesRemaining cal remaining</p>
+                        }
+                        else if (todayDiet.CaloriesRemaining is not null)
+                        {
+                            <p class="dashboard-muted">@Math.Abs(todayDiet.CaloriesRemaining.Value) cal over target</p>
+                        }
+
+                        <div class="target-bar">
+                            <div class="target-bar-fill" style="width:@GetDietTargetBarWidth()"></div>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="dashboard-muted">Calorie target unavailable.</p>
+                    }
+
+                    <p class="dashboard-muted small">@todayDiet.TargetMethodDescription</p>
+                </div>
+
                 <div class="card-actions">
                     <a class="dashboard-btn primary" href="/diet/add?returnUrl=/dashboard">Add entry</a>
                     <a class="dashboard-btn" href="/diet">View entries</a>
@@ -152,6 +184,29 @@ else
         opacity: 0.65;
         pointer-events: none;
     }
+
+    .nutrition-target-block {
+        margin-top: 0.75rem;
+    }
+
+    .target-bar {
+        width: 100%;
+        height: 10px;
+        background: #ececec;
+        border-radius: 999px;
+        overflow: hidden;
+        margin: 0.4rem 0 0.6rem 0;
+    }
+
+    .target-bar-fill {
+        height: 100%;
+        background: #1f6feb;
+        border-radius: 999px;
+    }
+
+    .small {
+        font-size: 0.85rem;
+    }
 </style>
 
 @code {
@@ -173,6 +228,8 @@ else
     private string dietSummary = "No meals logged this week.";
     private string workoutSummary = "No workouts logged this week.";
     private string weightSummary = "No weight entries logged this week.";
+    
+    private DietSummaryDto todayDiet = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -196,6 +253,8 @@ else
             {
                 return;
             }
+            
+            todayDiet = await DietService.GetTodaySummaryAsync();
 
             var sleepEntries = await Database.Sleep.ListForUserAsync(
                 userId,
@@ -223,7 +282,7 @@ else
             workoutCount = workoutEntries.Count;
             weightCount = weightEntries.Count;
 
-            weeklyCalories = dietEntries.Sum(meal => meal.Items?.Sum(item => item.TotalCalories) ?? 0);
+            weeklyCalories = dietEntries.Sum(meal => meal.Items?.Sum(item => item.Calories) ?? 0);
             workoutMinutes = workoutEntries.Sum(workout => workout.DurationMinutes);
 
             var latestWeightEntry = weightEntries
@@ -275,5 +334,16 @@ else
     {
         var diff = (7 + (date.DayOfWeek - startOfWeek)) % 7;
         return date.AddDays(-diff).Date;
+    }
+    
+    private string GetDietTargetBarWidth()
+    {
+        if (todayDiet.DailyCalorieTarget is null or <= 0)
+            return "0%";
+
+        var percent = (double)todayDiet.TotalCalories / todayDiet.DailyCalorieTarget.Value * 100.0;
+        percent = Math.Clamp(percent, 0, 100);
+
+        return $"{percent:0.#}%";
     }
 }
