@@ -174,6 +174,13 @@ public class DietService(
         return null;
     }
     
+    /// <summary>
+    /// Estimates the daily caloric intake based off of the Mifflin-St Jeor Equation and a sedentary activity factor of 1.2,
+    /// which is appropriate for most users given that we don't currently track activity levels.
+    /// </summary>
+    /// <param name="user">The user we are calculating the BMR for.</param>
+    /// <param name="weightKg">The weight of the user in kilograms, taken from the database weight table</param>
+    /// <returns></returns>
     private static int? CalculateDailyCalorieTarget(UserEntry? user, float? weightKg)
     {
         if (user is null || weightKg is null || user.HeightM <= 0) return null;
