@@ -7,6 +7,7 @@ namespace HealthingHand.Data.Stores;
 public interface IWeightStore : IStore<WeightEntry, int>
 {
     Task<List<WeightEntry>> ListForUserAsync(Guid userId, DateTime from, DateTime to);
+    Task<WeightEntry?> GetForDateAsync(Guid userId, DateTime date);
 }
 
 public class WeightStore(IDbContextFactory<AppDbContext> factory) : IWeightStore
@@ -25,6 +26,15 @@ public class WeightStore(IDbContextFactory<AppDbContext> factory) : IWeightStore
             .Where(w => w.UserId == userId && w.Date >= from && w.Date <= to)
             .OrderByDescending(w => w.Date)
             .ToListAsync();
+    }
+
+    public async Task<WeightEntry?> GetForDateAsync(Guid userId, DateTime date)
+    {
+        await using var db = await factory.CreateDbContextAsync();
+        var normalizedDate = date.Date;
+
+        return await db.WeightEntries
+            .SingleOrDefaultAsync(w => w.UserId == userId && w.Date == normalizedDate);
     }
 
     public async Task AddAsync(WeightEntry entry)

@@ -74,6 +74,7 @@ internal class Program // Personally, I prefer an explicit main method - CT
         builder.Services.AddScoped<IWorkoutService, WorkoutService>();
         builder.Services.AddScoped<IDietService, DietService>();
         builder.Services.AddScoped<ISleepService, SleepService>();
+        builder.Services.AddScoped<IWeightService, WeightService>();
 
         var app = builder.Build();
 
