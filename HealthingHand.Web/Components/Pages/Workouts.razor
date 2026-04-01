@@ -1,19 +1,22 @@
 @page "/workouts"
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
-@using System.Security.Claims
 @using HealthingHand.Data.Entries
-@using HealthingHand.Data.Stores
+@using HealthingHand.Web.Services
+@using HealthingHand.Web.Services.WorkoutItems
 @using Microsoft.AspNetCore.Authorization
-@using Microsoft.AspNetCore.Components.Authorization
-@inject AuthenticationStateProvider AuthStateProvider
-@inject IWorkoutStore WorkoutStore
+@inject IWorkoutService WorkoutService
 
 @attribute [Authorize]
 
 <h3>Workouts</h3>
 
 <p class="text-muted">Log workouts and review your time, effort, and heart rate together.</p>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
 
 @if (!string.IsNullOrWhiteSpace(message))
 {
@@ -132,6 +135,15 @@
                                 <label class="form-label">Name</label>
                                 <InputText class="form-control" @bind-Value="exercise.Name" />
                             </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Activity Type</label>
+                                <InputSelect class="form-select" @bind-Value="exercise.ActivityType">
+                                    @foreach (var activityType in activityTypes)
+                                    {
+                                        <option value="@activityType">@ToActivityDisplayName(activityType)</option>
+                                    }
+                                </InputSelect>
+                            </div>
                             <div class="col-md-2">
                                 <label class="form-label">Sets</label>
                                 <InputNumber class="form-control" @bind-Value="exercise.Sets" />
@@ -188,6 +200,7 @@
                         <th>Duration</th>
                         <th>Intensity</th>
                         <th>Avg HR</th>
+                        <th>Est. Calories</th>
                         <th>Exercises</th>
                         <th>Details</th>
                         <th></th>
@@ -204,9 +217,10 @@
                             <td>@entry.DurationMinutes min</td>
                             <td>@($"{entry.SelfReportedIntensity}/5 ({ToIntensityLabel(entry.SelfReportedIntensity)})")</td>
                             <td>@FormatHeartRate(entry)</td>
-                            <td>@entry.Exercises.Count</td>
+                            <td>@FormatCalories(entry.EstimatedCaloriesBurned)</td>
+                            <td>@entry.ExerciseCount</td>
                             <td>
-                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => ToggleDetails(entry.Id)">
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => ToggleDetailsAsync(entry.Id)">
                                     @(isExpanded ? "Hide Details" : "View Details")
                                 </button>
                             </td>
@@ -220,29 +234,32 @@
                         @if (isExpanded)
                         {
                             <tr class="table-light">
-                                <td colspan="8">
+                                <td colspan="9">
                                     <div class="p-3 workout-detail-grid">
                                         <div><strong>Workout Type:</strong> @ToDisplayName(entry.WorkoutType)</div>
                                         <div><strong>Started:</strong> @entry.StartedAt.ToString("MMM dd, yyyy hh:mm tt")</div>
                                         <div><strong>Duration:</strong> @entry.DurationMinutes min</div>
                                         <div><strong>Intensity:</strong> @($"{entry.SelfReportedIntensity}/5 ({ToIntensityLabel(entry.SelfReportedIntensity)})")</div>
                                         <div><strong>Average Heart Rate:</strong> @FormatHeartRate(entry)</div>
+                                        <div><strong>User Weight:</strong> @FormatWeight(expandedWorkout?.UserWeightKg)</div>
+                                        <div><strong>Estimated Calories Burned:</strong> @FormatCalories(expandedWorkout?.EstimatedCaloriesBurned)</div>
                                         <div><strong>Notes:</strong> @(string.IsNullOrWhiteSpace(entry.Notes) ? "No notes added." : entry.Notes)</div>
                                         <div>
                                             <strong>Exercises:</strong>
-                                            @if (entry.Exercises.Count == 0)
+                                            @if (expandedWorkout is null || expandedWorkout.Exercises.Count == 0)
                                             {
                                                 <span> No exercises added.</span>
                                             }
                                         </div>
 
-                                        @if (entry.Exercises.Count > 0)
+                                        @if (expandedWorkout is not null && expandedWorkout.Exercises.Count > 0)
                                         {
                                             <ul class="mb-0 ps-3">
-                                                @foreach (var exercise in entry.Exercises)
+                                                @foreach (var exercise in expandedWorkout.Exercises)
                                                 {
                                                     <li>
                                                         @exercise.Name
+                                                        <span> (@ToActivityDisplayName(exercise.ActivityType), MET @exercise.Met.ToString("0.0"))</span>
                                                         @if (exercise.Sets > 0 || exercise.Reps > 0)
                                                         {
                                                             <span> - @exercise.Sets sets x @exercise.Reps reps</span>
@@ -255,10 +272,11 @@
                                                         {
                                                             <span>, @exercise.DistanceKm.ToString("0.##") km</span>
                                                         }
-                                                        @if (exercise.Time > TimeSpan.Zero)
+                                                        @if (exercise.DurationMinutes > 0)
                                                         {
-                                                            <span>, @exercise.Time.TotalMinutes.ToString("0") min</span>
+                                                            <span>, @exercise.DurationMinutes.ToString("0") min</span>
                                                         }
+                                                        <span>, @FormatCalories(exercise.EstimatedCaloriesBurned)</span>
                                                     </li>
                                                 }
                                             </ul>
@@ -367,6 +385,8 @@
         [StringLength(100)]
         public string Name { get; set; } = "";
 
+        public ExerciseActivityType ActivityType { get; set; } = ExerciseActivityType.GeneralWeightLifting;
+
         [Range(0, 100)]
         public int Sets { get; set; }
 
@@ -386,12 +406,15 @@
     private readonly WorkoutType[] workoutTypes = Enum.GetValues<WorkoutType>()
         .Where(w => w != WorkoutType.Undefined)
         .ToArray();
+    private readonly IReadOnlyList<ExerciseActivityType> activityTypes = WorkoutActivityMetCatalog.All;
 
     private WorkoutFormModel model = new();
-    private List<WorkoutEntry> entries = [];
+    private List<WorkoutListItem> entries = [];
+    private WorkoutDetailDto? expandedWorkout;
     private int? expandedEntryId;
     private string? message;
-    private IEnumerable<WorkoutEntry> ChartEntries => entries.OrderBy(e => e.StartedAt);
+    private string? errorMessage;
+    private IEnumerable<WorkoutListItem> ChartEntries => entries.OrderBy(e => e.StartedAt);
     private int MaxDurationMinutes => entries.Count == 0 ? 1 : entries.Max(e => e.DurationMinutes);
 
     protected override async Task OnInitializedAsync()
@@ -402,33 +425,38 @@
 
     private async Task SaveWorkoutAsync()
     {
-        var userId = await GetUserIdAsync();
-        var startedAt = model.WorkoutDate.ToDateTime(model.StartTime);
+        errorMessage = null;
+        message = null;
 
-        var entry = new WorkoutEntry
+        var startedAt = model.WorkoutDate.ToDateTime(model.StartTime);
+        var result = await WorkoutService.AddWorkoutAsync(new WorkoutEntryInput
         {
-            UserId = userId,
             StartedAt = startedAt,
             DurationMinutes = model.DurationMinutes,
-            SelfReportedIntensity = (byte)model.SelfReportedIntensity,
-            AverageHeartRate = model.AverageHeartRate,
             WorkoutType = model.WorkoutType,
-            Notes = model.Notes.Trim(),
+            SelfReportedIntensity = model.SelfReportedIntensity,
+            AverageHeartRate = model.AverageHeartRate,
+            Notes = model.Notes,
             Exercises = model.Exercises
-                .Where(e => !string.IsNullOrWhiteSpace(e.Name))
-                .Select(e => new ExerciseEntry
+                .Select(e => new WorkoutExerciseInput
                 {
-                    Name = e.Name.Trim(),
+                    Name = e.Name,
+                    ActivityType = e.ActivityType,
                     Sets = e.Sets,
                     Reps = e.Reps,
                     WeightKg = e.WeightKg,
                     DistanceKm = e.DistanceKm,
-                    Time = TimeSpan.FromMinutes(e.DurationMinutes)
+                    DurationMinutes = e.DurationMinutes
                 })
                 .ToList()
-        };
+        });
 
-        await WorkoutStore.AddAsync(entry);
+        if (!result.Success)
+        {
+            errorMessage = result.Error;
+            return;
+        }
+
         message = "Workout saved.";
 
         model = new WorkoutFormModel();
@@ -438,19 +466,20 @@
 
     private async Task DeleteWorkoutAsync(int id)
     {
-        var userId = await GetUserIdAsync();
-        var workout = await WorkoutStore.GetAsync(id);
-        if (workout is null || workout.UserId != userId)
+        errorMessage = null;
+        message = null;
+
+        var result = await WorkoutService.DeleteWorkoutAsync(id);
+        if (!result.Success)
         {
-            message = "Workout not found.";
+            errorMessage = result.Error;
             return;
         }
-
-        await WorkoutStore.DeleteAsync(id);
 
         if (expandedEntryId == id)
         {
             expandedEntryId = null;
+            expandedWorkout = null;
         }
 
         message = "Workout deleted.";
@@ -459,23 +488,35 @@
 
     private async Task LoadEntriesAsync()
     {
-        var userId = await GetUserIdAsync();
         var to = DateTime.Today.AddDays(1).AddTicks(-1);
         var from = DateTime.Today.AddDays(-29);
 
-        entries = await WorkoutStore.ListForUserAsync(userId, from, to);
-    }
-
-    private async Task<Guid> GetUserIdAsync()
-    {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(userIdClaim, out var userId) ? userId : Guid.Empty;
+        entries = (await WorkoutService.ListPastWorkoutsAsync(from, to)).ToList();
     }
 
     private void AddExerciseRow() => model.Exercises.Add(new ExerciseFormModel());
 
-    private void ToggleDetails(int id) => expandedEntryId = expandedEntryId == id ? null : id;
+    private async Task ToggleDetailsAsync(int id)
+    {
+        errorMessage = null;
+
+        if (expandedEntryId == id)
+        {
+            expandedEntryId = null;
+            expandedWorkout = null;
+            return;
+        }
+
+        var result = await WorkoutService.GetWorkoutAsync(id);
+        if (!result.Success)
+        {
+            errorMessage = result.Error;
+            return;
+        }
+
+        expandedEntryId = id;
+        expandedWorkout = result.Workout;
+    }
 
     private void RemoveExerciseRow(int index)
     {
@@ -505,21 +546,33 @@
 
     private static string ToIntensityLabel(byte intensity) => ToIntensityLabel((int)intensity);
 
-    private static string FormatHeartRate(WorkoutEntry entry) =>
+    private static string ToActivityDisplayName(ExerciseActivityType activityType) =>
+        WorkoutActivityMetCatalog.ToDisplayName(activityType);
+
+    private static string FormatHeartRate(WorkoutListItem entry) =>
         entry.AverageHeartRate > 0 ? $"{entry.AverageHeartRate} bpm" : "--";
 
-    private string GetBarStyle(WorkoutEntry entry)
+    private static string FormatHeartRate(WorkoutDetailDto entry) =>
+        entry.AverageHeartRate > 0 ? $"{entry.AverageHeartRate} bpm" : "--";
+
+    private string GetBarStyle(WorkoutListItem entry)
     {
         var height = Math.Max(16, (int)Math.Round(entry.DurationMinutes * 100.0 / MaxDurationMinutes));
         return $"height: {height}%; background: {GetIntensityColor(entry.SelfReportedIntensity)};";
     }
 
-    private static string GetChartTooltip(WorkoutEntry entry) =>
+    private static string GetChartTooltip(WorkoutListItem entry) =>
         $"{entry.StartedAt:MMM dd}: {entry.DurationMinutes} min, intensity {entry.SelfReportedIntensity}/5, {FormatHeartRate(entry)}";
 
-    private static string GetIntensityColor(byte intensity)
+    private static string FormatCalories(double? calories) =>
+        calories.HasValue ? $"{calories.Value.ToString("0.##", CultureInfo.InvariantCulture)} cal" : "Unavailable";
+
+    private static string FormatWeight(float? weightKg) =>
+        weightKg.HasValue ? $"{weightKg.Value.ToString("0.##", CultureInfo.InvariantCulture)} kg" : "Unavailable";
+
+    private static string GetIntensityColor(int intensity)
     {
-        var clamped = Math.Clamp(intensity, (byte)0, (byte)5);
+        var clamped = Math.Clamp(intensity, 0, 5);
         var hue = 120 - (clamped * 24);
         return $"linear-gradient(180deg, hsl({hue} 72% 56%), hsl({Math.Max(0, hue - 12)} 70% 42%))";
     }

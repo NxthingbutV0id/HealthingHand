@@ -73,6 +73,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<ExerciseEntry>(e =>
         {
             e.Property(x => x.Name).IsRequired();
+            e.Property(x => x.ActivityType).HasConversion<string>().IsRequired();
         });
         
         modelBuilder.Entity<ExerciseEntry>()

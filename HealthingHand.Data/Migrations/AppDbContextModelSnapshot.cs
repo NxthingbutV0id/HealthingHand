@@ -50,6 +50,10 @@ namespace HealthingHand.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ActivityType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<float>("DistanceKm")
                         .HasColumnType("REAL");
 
