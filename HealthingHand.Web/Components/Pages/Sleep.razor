@@ -95,25 +95,32 @@
                         </div>
                     </div>
 
-                    <svg class="sleep-chart" viewBox="0 0 640 260" role="img" aria-label="Sleep hours by day">
-                        <line x1="56" y1="220" x2="612" y2="220" class="chart-axis" />
-                        <line x1="56" y1="24" x2="56" y2="220" class="chart-axis" />
-                        <line x1="56" y1="24" x2="612" y2="24" class="chart-grid" />
-                        <line x1="56" y1="122" x2="612" y2="122" class="chart-grid" />
-                        <line x1="56" y1="220" x2="612" y2="220" class="chart-grid" />
+                    <div class="sleep-chart-wrap">
+                        <svg class="sleep-chart" viewBox="0 0 640 260" role="img" aria-label="Sleep hours by day">
+                            <line x1="56" y1="220" x2="612" y2="220" class="chart-axis" />
+                            <line x1="56" y1="24" x2="56" y2="220" class="chart-axis" />
+                            <line x1="56" y1="24" x2="612" y2="24" class="chart-grid" />
+                            <line x1="56" y1="122" x2="612" y2="122" class="chart-grid" />
+                            <line x1="56" y1="220" x2="612" y2="220" class="chart-grid" />
 
-                        <polyline points="@chartLinePoints" class="chart-line" />
+                            <polyline points="@chartLinePoints" class="chart-line" />
 
-                        @foreach (var point in chartPoints)
+                            @foreach (var point in chartPoints)
+                            {
+                                <circle cx="@point.X" cy="@point.Y" r="4" class="chart-dot" />
+                            }
+                        </svg>
+
+                        @if (chartPoints.Count > 0)
                         {
-                            <circle cx="@point.X" cy="@point.Y" r="4" class="chart-dot" />
-                        }
-                    </svg>
+                            var first = chartPoints.First();
+                            var middle = chartPoints[chartPoints.Count / 2];
+                            var last = chartPoints.Last();
 
-                    <div class="chart-footer-labels">
-                        <span>@chartPoints.First().Label</span>
-                        <span>@chartPoints[chartPoints.Count / 2].Label</span>
-                        <span>@chartPoints.Last().Label</span>
+                            <span class="chart-x-label" style="@GetChartLabelStyle(first.X)">@first.Label</span>
+                            <span class="chart-x-label" style="@GetChartLabelStyle(middle.X)">@middle.Label</span>
+                            <span class="chart-x-label" style="@GetChartLabelStyle(last.X)">@last.Label</span>
+                        }
                     </div>
                 }
             </div>
@@ -240,8 +247,7 @@
         stroke-width: 2;
     }
 
-    .chart-label,
-    .chart-x-label {
+    .chart-label {
         fill: #5f6b7a;
         font-size: 12px;
     }
@@ -249,6 +255,22 @@
     .sleep-detail-grid {
         display: grid;
         gap: 0.5rem;
+    }
+
+    .sleep-chart-wrap {
+        position: relative;
+        width: 100%;
+        padding-bottom: 2rem;
+    }
+
+    .chart-x-label {
+        position: absolute;
+        bottom: 0;
+        transform: translateX(-50%);
+        color: #5f6b7a;
+        font-size: 12px;
+        white-space: nowrap;
+        line-height: 1;
     }
 </style>
 
@@ -335,8 +357,7 @@
             return;
         }
 
-        if (expandedEntryId == id)
-            expandedEntryId = null;
+        if (expandedEntryId == id) expandedEntryId = null;
 
         message = "Sleep entry deleted.";
         await LoadEntriesAsync();
@@ -379,19 +400,17 @@
         chartPeakHours = daySeries.Count == 0 ? 0 : daySeries.Max(d => d.Hours);
         chartMaxHours = Math.Max(8, Math.Ceiling(chartPeakHours + 1));
 
-        var xStep = totalDays == 1 ? 0 : chartWidth / (totalDays - 1);
+        const double xStep = chartWidth / (totalDays - 1);
         chartPoints = daySeries
             .Select((day, index) =>
             {
-                var x = chartLeft + (xStep * index);
+                var x = chartLeft + xStep * index;
                 var normalized = chartMaxHours <= 0 ? 0 : day.Hours / chartMaxHours;
                 var y = chartTop + chartHeight - (normalized * chartHeight);
 
                 return new SleepChartPoint(
                     day.Date.ToString("MM/dd", CultureInfo.InvariantCulture),
-                    day.Hours,
-                    x,
-                    y);
+                    day.Hours, x, y);
             })
             .ToList();
 
@@ -407,5 +426,11 @@
     {
         var ts = TimeSpan.FromHours(hours);
         return ts.ToString(@"h\h\ mm\m");
+    }
+    
+    private static string GetChartLabelStyle(double x)
+    {
+        var percent = (x / 640.0) * 100.0;
+        return $"left: {percent.ToString("0.###", CultureInfo.InvariantCulture)}%;";
     }
 }
