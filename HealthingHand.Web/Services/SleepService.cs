@@ -19,12 +19,10 @@ public class SleepService(ISleepStore sleeps, IHttpContextAccessor httpContextAc
     public async Task<(bool Success, string? Error)> SaveAsync(SleepEntryInput input)
     {
         var userId = GetCurrentUserId();
-        if (userId is null)
-            return (false, "Not signed in.");
+        if (userId is null) return (false, "Not signed in.");
 
         var validationError = Validate(input);
-        if (validationError is not null)
-            return (false, validationError);
+        if (validationError is not null) return (false, validationError);
 
         var sleepDate = DateOnly.FromDateTime(input.StartTime);
         var storedQuality = EncodeSleepQuality(input.SleepQuality);
@@ -129,11 +127,9 @@ public class SleepService(ISleepStore sleeps, IHttpContextAccessor httpContextAc
     public async Task<IReadOnlyList<SleepTrendPoint>> GetTrendAsync(int days)
     {
         var userId = GetCurrentUserId();
-        if (userId is null)
-            return [];
+        if (userId is null) return [];
 
-        if (days <= 0)
-            days = 7;
+        if (days <= 0) days = 7;
 
         var to = DateOnly.FromDateTime(DateTime.Today);
         var from = to.AddDays(-(days - 1));
@@ -179,26 +175,18 @@ public class SleepService(ISleepStore sleeps, IHttpContextAccessor httpContextAc
 
     private static string? Validate(SleepEntryInput input)
     {
-        if (input.StartTime == default)
-            return "Start time is required.";
-
-        if (input.EndTime == default)
-            return "End time is required.";
-
-        if (input.EndTime <= input.StartTime)
-            return "End time must be after start time.";
-
+        if (input.StartTime == default) return "Start time is required.";
+        if (input.EndTime == default) return "End time is required.";
+        if (input.EndTime <= input.StartTime) return "End time must be after start time.";
         var duration = input.EndTime - input.StartTime;
-        if (duration.TotalHours > 24)
-            return "Sleep duration cannot exceed 24 hours.";
-
-        return input.SleepQuality is < 0 or > 5 ? "Sleep quality must be between 0 and 5." : null;
+        if (duration.TotalHours > 24) return "Sleep duration cannot exceed 24 hours.";
+        return input.SleepQuality is < 0.0f or > 5.0f ? "Sleep quality must be between 0 and 5." : null;
     }
 
-    private static byte EncodeSleepQuality(double quality)
+    private static byte EncodeSleepQuality(float quality)
     {
-        var clamped = Math.Clamp(quality, 0.0, 5.0);
-        return (byte)Math.Round(clamped * 32.0);
+        var clamped = Math.Clamp(quality, 0.0f, 5.0f);
+        return (byte)Math.Round(clamped * 32.0f);
     }
 
     private static float DecodeSleepQuality(byte storedQuality)

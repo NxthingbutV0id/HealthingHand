@@ -100,7 +100,6 @@ public class AccountService(IAccountStore accounts) : IAccountService
 
         await accounts.AddAsync(user);
 
-        // Optional: auto-sign-in after register
         CurrentUser = user;
         AuthStateChanged?.Invoke();
 
@@ -143,10 +142,7 @@ public class AccountService(IAccountStore accounts) : IAccountService
     }
 
     public async Task<(bool Success, string? Error)> UpdateProfileAsync(
-        string displayName,
-        byte age,
-        Sex sex,
-        float heightM)
+        string displayName, byte age, Sex sex, float heightM)
     {
         if (CurrentUser is null) return (false, "Not signed in.");
 

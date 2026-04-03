@@ -286,7 +286,7 @@
         [Required]
         public TimeOnly WakeTime { get; set; } = new(6, 30);
 
-        [Range(typeof(double), "0", "5")]
+        [Range(0.0f, 5.0f)]
         public float Quality { get; set; } = 3.0f;
 
         [StringLength(500)]
