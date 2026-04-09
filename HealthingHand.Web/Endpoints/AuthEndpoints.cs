@@ -3,6 +3,7 @@ using HealthingHand.Data.Entries;
 using HealthingHand.Web.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Extensions.Options;
 
 namespace HealthingHand.Web.Endpoints;
 
@@ -18,13 +19,22 @@ public static class AuthEndpoints
         app.MapPost("/auth/update-display-name", AuthUpdateDisplayName).DisableAntiforgery();
     }
 
-    private static async Task<IResult> AuthLogin(HttpContext context, IAccountService accounts)
+    private static async Task<IResult> AuthLogin(
+        HttpContext context,
+        IAccountService accounts,
+        IOptionsMonitor<CookieAuthenticationOptions> cookieOptions)
     {
+        var opts = cookieOptions.Get(CookieAuthenticationDefaults.AuthenticationScheme);
+
+        Console.WriteLine(
+            $"[AUTH] Login config | ExpireTimeSpan={opts.ExpireTimeSpan} | " +
+            $"SlidingExpiration={opts.SlidingExpiration}");
+
         var form = await context.Request.ReadFormAsync();
         var email = form["Email"].ToString();
         var password = form["Password"].ToString();
         var returnUrl = form["ReturnUrl"].ToString();
-        
+
         if (email.Trim().Equals("test@local", StringComparison.OrdinalIgnoreCase) && password == "test")
         {
             await accounts.SignInTestUserAsync();
@@ -38,18 +48,27 @@ public static class AuthEndpoints
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.DisplayName),
-            new(ClaimTypes.Email, user.Email)
+            new(ClaimTypes.Email, user.Email),
         };
 
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         var principal = new ClaimsPrincipal(identity);
+
+        var issued = DateTimeOffset.UtcNow;
+        var expires = issued.Add(opts.ExpireTimeSpan);
+
+        Console.WriteLine(
+            $"[AUTH] Issuing cookie | issued={issued:u} | expires={expires:u}");
 
         await context.SignInAsync(
             CookieAuthenticationDefaults.AuthenticationScheme,
             principal,
             new AuthenticationProperties
             {
-                IsPersistent = true
+                IsPersistent = true,
+                IssuedUtc = issued,
+                ExpiresUtc = expires,
+                AllowRefresh = true
             });
 
         if (string.IsNullOrWhiteSpace(returnUrl) || !returnUrl.StartsWith('/'))

@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\HealthingHand.Data\HealthingHand.Data.csproj" />
+    <ProjectReference Include="..\HealthingHand.Web\HealthingHand.Web.csproj" />
   </ItemGroup>
 
 </Project>

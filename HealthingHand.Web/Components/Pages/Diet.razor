@@ -127,10 +127,14 @@ else
                                 </div>
 
                                 <div class="field">
-                                    <label>Calories</label>
-                                    <input class="diet-input" type="number" step="1" min="0" @bind="item.Calories" />
+                                    <label>Calories / Unit</label>
+                                    <input class="diet-input" type="number" step="1" min="0" @bind="item.CaloriesPerUnit" />
                                 </div>
                             </div>
+                            
+                            <p class="diet-muted">
+                                Total calories: @GetItemTotalCalories(item)
+                            </p>
 
                             <div class="food-grid">
                                 <div class="field">
@@ -586,4 +590,9 @@ else
         1 => "1 meal logged today",
         _ => $"{mealCount} meals logged today"
     };
+    
+    private static int GetItemTotalCalories(DietMealItemInput item)
+    {
+        return (int)Math.Round(item.Quantity * item.CaloriesPerUnit);
+    }
 }

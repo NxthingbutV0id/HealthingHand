@@ -1,17 +1,15 @@
 using HealthingHand.Data.Entries;
 using System.Security.Cryptography;
 using HealthingHand.Data.Stores;
+using System.ComponentModel.DataAnnotations;
 
 namespace HealthingHand.Web.Services;
 
 public interface IAccountService
 {
     UserEntry? CurrentUser { get; }
-
     bool IsSignedIn { get; }
-
     event Action? AuthStateChanged;
-
     Task<UserEntry> SignInTestUserAsync();
 
     Task<(bool Success, string? Error)> RegisterAsync(
@@ -23,27 +21,14 @@ public interface IAccountService
         float heightM);
 
     Task<(bool Success, string? Error)> SignInAsync(string email, string password);
-
     Task SignOutAsync();
-
     Task RefreshCurrentUserAsync();
-
-    Task<(bool Success, string? Error)> UpdateProfileAsync(
-        string displayName,
-        byte age,
-        Sex sex,
-        float heightM);
-
+    Task<(bool Success, string? Error)> UpdateProfileAsync(string displayName, byte age, Sex sex, float heightM);
     Task<(bool Success, string? Error)> ChangePasswordAsync(string currentPassword, string newPassword);
-    
     Task<UserEntry?> AuthenticateAsync(string email, string password);
-    
     Task<(bool Success, string? Error)> DeleteCurrentAccountAsync(Guid userId, string currentPassword);
-    
     Task<UserEntry?> GetByIdAsync(Guid userId);
-
     Task<(bool Success, string? Error, UserEntry? User)> UpdateDisplayNameAsync(Guid userId, string displayName);
-
     Task<(bool Success, string? Error)> DeleteAccountAsync(Guid userId, string currentPassword);
 }
 
@@ -52,7 +37,8 @@ public class AccountService(IAccountStore accounts) : IAccountService
     public UserEntry? CurrentUser { get; private set; }
     public bool IsSignedIn => CurrentUser is not null;
     public event Action? AuthStateChanged;
-
+    private static readonly EmailAddressAttribute EmailValidator = new();
+    
     public async Task<UserEntry> SignInTestUserAsync()
     {
         const string testEmail = "test@local";
@@ -87,28 +73,18 @@ public class AccountService(IAccountStore accounts) : IAccountService
     }
 
     public async Task<(bool Success, string? Error)> RegisterAsync(
-        string email,
-        string displayName,
-        string password,
-        byte age,
-        Sex sex,
-        float heightM)
+        string email, string displayName, string password, byte age, Sex sex, float heightM)
     {
         email = NormalizeEmail(email);
+        if (!IsEmailFormatValid(email)) return (false, "Invalid E-mail address.");
+        
         displayName = displayName.Trim();
-
-        if (string.IsNullOrWhiteSpace(email))
-            return (false, "Email is required.");
-        if (string.IsNullOrWhiteSpace(displayName))
-            return (false, "Display name is required.");
-        if (!IsPasswordStrongEnough(password))
-            return (false, "Password must be at least 8 characters.");
-        if (heightM <= 0)
-            return (false, "Height must be positive.");
+        if (string.IsNullOrWhiteSpace(displayName)) return (false, "Display name is required.");
+        if (!IsPasswordStrongEnough(password)) return (false, "Password must be at least 8 characters.");
+        if (heightM <= 0) return (false, "Height must be positive.");
 
         var existing = await accounts.GetByEmailAsync(email);
-        if (existing is not null)
-            return (false, "An account with that email already exists.");
+        if (existing is not null) return (false, "An account with that email already exists.");
 
         var user = new UserEntry
         {
@@ -124,7 +100,6 @@ public class AccountService(IAccountStore accounts) : IAccountService
 
         await accounts.AddAsync(user);
 
-        // Optional: auto-sign-in after register
         CurrentUser = user;
         AuthStateChanged?.Invoke();
 
@@ -167,19 +142,13 @@ public class AccountService(IAccountStore accounts) : IAccountService
     }
 
     public async Task<(bool Success, string? Error)> UpdateProfileAsync(
-        string displayName,
-        byte age,
-        Sex sex,
-        float heightM)
+        string displayName, byte age, Sex sex, float heightM)
     {
-        if (CurrentUser is null)
-            return (false, "Not signed in.");
+        if (CurrentUser is null) return (false, "Not signed in.");
 
         displayName = displayName.Trim();
-        if (string.IsNullOrWhiteSpace(displayName))
-            return (false, "Display name is required.");
-        if (heightM <= 0)
-            return (false, "Height must be positive.");
+        if (string.IsNullOrWhiteSpace(displayName)) return (false, "Display name is required.");
+        if (heightM <= 0) return (false, "Height must be positive.");
 
         CurrentUser.DisplayName = displayName;
         CurrentUser.Age = age;
@@ -193,14 +162,9 @@ public class AccountService(IAccountStore accounts) : IAccountService
 
     public async Task<(bool Success, string? Error)> ChangePasswordAsync(string currentPassword, string newPassword)
     {
-        if (CurrentUser is null)
-            return (false, "Not signed in.");
-
-        if (!VerifyPassword(CurrentUser.PasswordHash, currentPassword))
-            return (false, "Current password is incorrect.");
-
-        if (!IsPasswordStrongEnough(newPassword))
-            return (false, "New password must be at least 8 characters.");
+        if (CurrentUser is null) return (false, "Not signed in.");
+        if (!VerifyPassword(CurrentUser.PasswordHash, currentPassword)) return (false, "Current password is incorrect.");
+        if (!IsPasswordStrongEnough(newPassword)) return (false, "New password must be at least 8 characters.");
 
         CurrentUser.PasswordHash = HashPassword(newPassword);
         await accounts.UpdateAsync(CurrentUser);
@@ -212,14 +176,12 @@ public class AccountService(IAccountStore accounts) : IAccountService
     {
         email = NormalizeEmail(email);
 
-        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
-            return null;
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password)) return null;
 
         var user = await accounts.GetByEmailAsync(email);
         if (user is null) return null;
 
-        if (!VerifyPassword(user.PasswordHash, password))
-            return null;
+        if (!VerifyPassword(user.PasswordHash, password)) return null;
 
         user.LastOnline = DateTime.UtcNow;
 
@@ -229,15 +191,12 @@ public class AccountService(IAccountStore accounts) : IAccountService
     
     public async Task<(bool Success, string? Error)> DeleteCurrentAccountAsync(Guid userId, string currentPassword)
     {
-        if (string.IsNullOrWhiteSpace(currentPassword))
-            return (false, "Password is required.");
+        if (string.IsNullOrWhiteSpace(currentPassword)) return (false, "Password is required.");
     
         var user = await accounts.GetAsync(userId);
-        if (user is null)
-            return (false, "Account not found.");
+        if (user is null) return (false, "Account not found.");
     
-        if (!VerifyPassword(user.PasswordHash, currentPassword))
-            return (false, "Current password is incorrect.");
+        if (!VerifyPassword(user.PasswordHash, currentPassword)) return (false, "Current password is incorrect.");
     
         await accounts.DeleteAsync(userId);
 
@@ -293,6 +252,24 @@ public class AccountService(IAccountStore accounts) : IAccountService
         AuthStateChanged?.Invoke();
 
         return (true, null);
+    }
+
+    private static bool IsEmailFormatValid(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return false;
+
+        email = email.Trim();
+
+        // bypass the test user
+        if (string.Equals(email, "test@local", StringComparison.OrdinalIgnoreCase)) return true;
+
+        if (!EmailValidator.IsValid(email)) return false;
+
+        var at = email.LastIndexOf('@');
+        if (at <= 0 || at >= email.Length - 1) return false;
+
+        var domain = email[(at + 1)..]; // Funky new range syntax?
+        return domain.Contains('.') && !domain.StartsWith('.') && !domain.EndsWith('.');
     }
 
     private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();

@@ -1,7 +1,9 @@
 using System.Security.Claims;
 using HealthingHand.Data.Entries;
+using HealthingHand.Data.Persistence;
 using HealthingHand.Data.Stores;
 using HealthingHand.Web.Services.DietItems;
+using Microsoft.EntityFrameworkCore;
 
 namespace HealthingHand.Web.Services;
 
@@ -15,6 +17,8 @@ public interface IDietService
 
 public class DietService(
     IDietStore diets,
+    IAccountStore accounts,
+    IDbContextFactory<AppDbContext> dbFactory,
     IHttpContextAccessor httpContextAccessor) : IDietService
 {
     public async Task<(bool Success, string? Error, int? MealId)> CreateMealAsync(DietMealInput input)
@@ -42,7 +46,7 @@ public class DietService(
                 Name = i.Name.Trim(),
                 Quantity = i.Quantity,
                 Unit = i.Unit.Trim(),
-                Calories = i.Calories,
+                Calories = (int)(i.CaloriesPerUnit * i.Quantity),
                 ProteinGrams = i.ProteinGrams,
                 CarbsGrams = i.CarbsGrams,
                 FatGrams = i.FatGrams
@@ -90,6 +94,18 @@ public class DietService(
         }
 
         var meals = await diets.ListForUserAsync(userId.Value, from, to, includeItems: true);
+        var user = await accounts.GetAsync(userId.Value);
+
+        float? latestWeightKg;
+
+        await using (var db = await dbFactory.CreateDbContextAsync())
+        {
+            latestWeightKg = await db.WeightEntries
+                .Where(w => w.UserId == userId.Value)
+                .OrderByDescending(w => w.Date)
+                .Select(w => (float?)w.WeightKg)
+                .FirstOrDefaultAsync();
+        }
 
         var mealCount = meals.Count;
         var itemCount = meals.Sum(m => m.Items.Count);
@@ -97,6 +113,8 @@ public class DietService(
         var totalProtein = meals.Sum(m => m.Items.Sum(i => i.ProteinGrams));
         var totalCarbs = meals.Sum(m => m.Items.Sum(i => i.CarbsGrams));
         var totalFat = meals.Sum(m => m.Items.Sum(i => i.FatGrams));
+
+        var target = CalculateDailyCalorieTarget(user, latestWeightKg);
 
         return new DietSummaryDto
         {
@@ -108,7 +126,13 @@ public class DietService(
             TotalProteinGrams = totalProtein,
             TotalCarbsGrams = totalCarbs,
             TotalFatGrams = totalFat,
-            AverageCaloriesPerMeal = mealCount == 0 ? 0 : (double)totalCalories / mealCount
+            AverageCaloriesPerMeal = mealCount == 0 ? 0 : (double)totalCalories / mealCount,
+            CaloriesDelta = target is null ? 0 : totalCalories - target.Value,
+            DailyCalorieTarget = target,
+            CaloriesRemaining = target - totalCalories,
+            TargetMethodDescription = target is null
+                ? "Target unavailable until profile and weight data exist."
+                : "Derived from latest weight entry plus profile data using Mifflin-St Jeor with sedentary factor 1.2."
         };
     }
 
@@ -142,11 +166,30 @@ public class DietService(
             if (string.IsNullOrWhiteSpace(item.Name)) return $"Food item #{row} must have a name.";
             if (item.Quantity <= 0) return $"Food item #{row} must have a quantity greater than 0.";
             if (string.IsNullOrWhiteSpace(item.Unit)) return $"Food item #{row} must have a unit.";
-            if (item.Calories < 0) return $"Food item #{row} cannot have negative calories.";
+            if (item.CaloriesPerUnit < 0) return $"Food item #{row} cannot have negative calories.";
             if (item.ProteinGrams < 0 || item.CarbsGrams < 0 || item.FatGrams < 0) 
                 return $"Food item #{row} cannot have negative macro values.";
         }
 
         return null;
+    }
+    
+    /// <summary>
+    /// Estimates the daily caloric intake based off of the Mifflin-St Jeor Equation and a sedentary activity factor of 1.2,
+    /// which is appropriate for most users given that we don't currently track activity levels.
+    /// </summary>
+    /// <param name="user">The user we are calculating the BMR for.</param>
+    /// <param name="weightKg">The weight of the user in kilograms, taken from the database weight table</param>
+    /// <returns></returns>
+    private static int? CalculateDailyCalorieTarget(UserEntry? user, float? weightKg)
+    {
+        if (user is null || weightKg is null || user.HeightM <= 0) return null;
+        var heightCm = user.HeightM * 100f;
+        var age = user.Age;
+
+        // weightKg should not be null beyond this point, but C# is being dumb...
+        var bmr = 10 * weightKg + 6.25 * heightCm - 5 * age + (user.Sex == Sex.Male ? 5 : -161);
+        
+        return (int)Math.Round((bmr ?? 0) * 1.2);
     }
 }

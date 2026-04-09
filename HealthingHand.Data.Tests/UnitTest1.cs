@@ -1,11 +1,22 @@
 ﻿using System.Reflection;
+using System.Security.Claims;
 using HealthingHand.Data.Entries;
 using HealthingHand.Data.Persistence;
 using HealthingHand.Data.Stores;
+using HealthingHand.Web.Endpoints;
+using HealthingHand.Web.Services;
+using HealthingHand.Web.Services.DietItems;
+using HealthingHand.Web.Services.SleepItems;
+using HealthingHand.Web.Services.WorkoutItems;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Primitives;
 
 namespace HealthingHand.Data.Tests;
 
@@ -126,7 +137,7 @@ public sealed class UnitTest1 : IDisposable
         var meta = GetUserMeta(db);
 
         var email = $"test_{Guid.NewGuid():N}@example.com";
-        var display = "Test User";
+        const string display = "Test User";
 
         var user = CreateUserInstance(meta, email, display);
 
@@ -586,27 +597,960 @@ public sealed class UnitTest1 : IDisposable
         Assert.Equal("Eggs", saved.Items[0].Name);
     }
 
+    [Fact]
+    public async Task SleepService_SaveAsync_Create_AddsNewEntryForCurrentUser()
+    {
+        var store = new FakeSleepStore();
+        var userId = Guid.NewGuid();
+        var service = CreateSleepService(store, userId);
+
+        var input = MakeSleepInput(
+            start: new DateTime(2026, 4, 1, 22, 30, 0, DateTimeKind.Utc),
+            end:   new DateTime(2026, 4, 2, 6, 45, 0, DateTimeKind.Utc),
+            quality: 4.5f,
+            notes: "  Slept well  ");
+
+        var result = await service.SaveAsync(input);
+
+        Assert.True(result.Success);
+        Assert.Null(result.Error);
+
+        Assert.Single(store.Entries);
+        Assert.Equal(1, store.AddCalls);
+        Assert.Equal(0, store.UpdateCalls);
+
+        var saved = store.Entries.Single();
+        Assert.Equal(userId, saved.UserId);
+        Assert.Equal(DateOnly.FromDateTime(input.StartTime), saved.SleepDate);
+        Assert.Equal(input.StartTime, saved.StartTime);
+        Assert.Equal(input.EndTime, saved.EndTime);
+        Assert.Equal("Slept well", saved.Notes);
+
+        // 4.5 * 32 = 144
+        Assert.Equal((byte)144, saved.SleepQuality);
+    }
+
+    [Fact]
+    public async Task SleepService_SaveAsync_Update_SameDateUpdatesExistingEntryInsteadOfAddingAnother()
+    {
+        var store = new FakeSleepStore();
+        var userId = Guid.NewGuid();
+
+        store.Seed(new SleepEntry
+        {
+            Id = 7,
+            UserId = userId,
+            SleepDate = new DateOnly(2026, 4, 1),
+            StartTime = new DateTime(2026, 4, 1, 22, 0, 0, DateTimeKind.Utc),
+            EndTime = new DateTime(2026, 4, 2, 6, 0, 0, DateTimeKind.Utc),
+            SleepQuality = 96, // 3.0
+            Notes = "Original"
+        });
+
+        var service = CreateSleepService(store, userId);
+
+        var input = MakeSleepInput(
+            start: new DateTime(2026, 4, 1, 23, 0, 0, DateTimeKind.Utc),
+            end:   new DateTime(2026, 4, 2, 7, 30, 0, DateTimeKind.Utc),
+            quality: 4.0f,
+            notes: "  Updated note  ");
+
+        var result = await service.SaveAsync(input);
+
+        Assert.True(result.Success);
+        Assert.Null(result.Error);
+
+        Assert.Single(store.Entries);
+        Assert.Equal(0, store.AddCalls);
+        Assert.Equal(1, store.UpdateCalls);
+
+        var saved = store.Entries.Single();
+        Assert.Equal(7, saved.Id);
+        Assert.Equal(userId, saved.UserId);
+        Assert.Equal(new DateOnly(2026, 4, 1), saved.SleepDate);
+        Assert.Equal(input.StartTime, saved.StartTime);
+        Assert.Equal(input.EndTime, saved.EndTime);
+        Assert.Equal("Updated note", saved.Notes);
+
+        // 4.0 * 32 = 128
+        Assert.Equal((byte)128, saved.SleepQuality);
+    }
+
+    [Fact]
+    public async Task SleepService_ListHistoryAsync_Retrieve_ReturnsOnlyCurrentUsersEntriesInDescendingDateOrder()
+    {
+        var store = new FakeSleepStore();
+        var userId = Guid.NewGuid();
+        var otherUserId = Guid.NewGuid();
+
+        store.Seed(
+            new SleepEntry
+            {
+                Id = 1,
+                UserId = userId,
+                SleepDate = new DateOnly(2026, 4, 1),
+                StartTime = new DateTime(2026, 4, 1, 22, 0, 0, DateTimeKind.Utc),
+                EndTime = new DateTime(2026, 4, 2, 6, 0, 0, DateTimeKind.Utc),
+                SleepQuality = 128, // 4.0
+                Notes = "Older"
+            },
+            new SleepEntry
+            {
+                Id = 2,
+                UserId = userId,
+                SleepDate = new DateOnly(2026, 4, 3),
+                StartTime = new DateTime(2026, 4, 3, 23, 0, 0, DateTimeKind.Utc),
+                EndTime = new DateTime(2026, 4, 4, 7, 30, 0, DateTimeKind.Utc),
+                SleepQuality = 160, // 5.0
+                Notes = "Newest"
+            },
+            new SleepEntry
+            {
+                Id = 3,
+                UserId = otherUserId,
+                SleepDate = new DateOnly(2026, 4, 2),
+                StartTime = new DateTime(2026, 4, 2, 22, 0, 0, DateTimeKind.Utc),
+                EndTime = new DateTime(2026, 4, 3, 6, 0, 0, DateTimeKind.Utc),
+                SleepQuality = 64, // 2.0
+                Notes = "Other user"
+            });
+
+        var service = CreateSleepService(store, userId);
+
+        var history = await service.ListHistoryAsync(
+            new DateOnly(2026, 4, 1),
+            new DateOnly(2026, 4, 5));
+
+        Assert.Equal(2, history.Count);
+
+        Assert.Equal(new DateOnly(2026, 4, 3), history[0].SleepDate);
+        Assert.Equal(new DateOnly(2026, 4, 1), history[1].SleepDate);
+
+        Assert.All(history, item => Assert.DoesNotContain("Other user", item.Notes));
+
+        Assert.Equal("Newest", history[0].Notes);
+        Assert.Equal("Older", history[1].Notes);
+        Assert.True(Math.Abs(history[0].SleepQuality - 5.0f) < 0.001f);
+        Assert.True(Math.Abs(history[1].SleepQuality - 4.0f) < 0.001f);
+    }
+
+    [Fact]
+    public async Task SleepService_DeleteAsync_Delete_RemovesOwnedEntry()
+    {
+        var store = new FakeSleepStore();
+        var userId = Guid.NewGuid();
+
+        store.Seed(new SleepEntry
+        {
+            Id = 10,
+            UserId = userId,
+            SleepDate = new DateOnly(2026, 4, 1),
+            StartTime = new DateTime(2026, 4, 1, 22, 0, 0, DateTimeKind.Utc),
+            EndTime = new DateTime(2026, 4, 2, 6, 0, 0, DateTimeKind.Utc),
+            SleepQuality = 128,
+            Notes = "Delete me"
+        });
+
+        var service = CreateSleepService(store, userId);
+
+        var result = await service.DeleteAsync(10);
+
+        Assert.True(result.Success);
+        Assert.Null(result.Error);
+        Assert.Equal(1, store.DeleteCalls);
+        Assert.Empty(store.Entries);
+    }
+
+    [Fact]
+    public async Task SleepService_DeleteAsync_UserIsolation_DoesNotDeleteOtherUsersEntry()
+    {
+        var store = new FakeSleepStore();
+        var userId = Guid.NewGuid();
+        var otherUserId = Guid.NewGuid();
+
+        store.Seed(new SleepEntry
+        {
+            Id = 25,
+            UserId = otherUserId,
+            SleepDate = new DateOnly(2026, 4, 1),
+            StartTime = new DateTime(2026, 4, 1, 22, 0, 0, DateTimeKind.Utc),
+            EndTime = new DateTime(2026, 4, 2, 6, 0, 0, DateTimeKind.Utc),
+            SleepQuality = 128,
+            Notes = "Other user's entry"
+        });
+
+        var service = CreateSleepService(store, userId);
+
+        var result = await service.DeleteAsync(25);
+
+        Assert.False(result.Success);
+        Assert.Equal("Sleep entry not found.", result.Error);
+        Assert.Equal(0, store.DeleteCalls);
+        Assert.Single(store.Entries);
+        Assert.Equal(25, store.Entries.Single().Id);
+    }
+    
+    [Fact]
+    public async Task DietService_CreateMealAsync_PersistsMealAndComputedItems()
+    {
+        await using var db = new AppDbContext(_options);
+
+        var user = MakeUser($"dietsvc_create_{Guid.NewGuid():N}@example.com");
+        user.Age = 20;
+        user.Sex = Sex.Male;
+        user.HeightM = 1.80f;
+
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var service = CreateDietService(user.Id);
+
+        var result = await service.CreateMealAsync(new DietMealInput
+        {
+            EatenAt = new DateTime(2026, 4, 3, 12, 0, 0, DateTimeKind.Utc),
+            MealType = " Lunch ",
+            Notes = "  Post workout  ",
+            Items =
+            [
+                new DietMealItemInput
+                {
+                    Name = " Chicken ",
+                    Quantity = 2,
+                    Unit = "serving",
+                    CaloriesPerUnit = 150,
+                    ProteinGrams = 30,
+                    CarbsGrams = 0,
+                    FatGrams = 5
+                },
+
+                new DietMealItemInput
+                {
+                    Name = " Rice ",
+                    Quantity = 1.5f,
+                    Unit = "cup",
+                    CaloriesPerUnit = 200,
+                    ProteinGrams = 4,
+                    CarbsGrams = 45,
+                    FatGrams = 1
+                }
+            ]
+        });
+
+        Assert.True(result.Success);
+        Assert.Null(result.Error);
+        Assert.NotNull(result.MealId);
+
+        var saved = await db.DietEntries
+            .Include(m => m.Items)
+            .SingleAsync(m => m.Id == result.MealId!.Value);
+
+        Assert.Equal(user.Id, saved.UserId);
+        Assert.Equal("Lunch", saved.MealType);
+        Assert.Equal("Post workout", saved.Notes);
+        Assert.Equal(2, saved.Items.Count);
+
+        Assert.Contains(saved.Items, i =>
+            i is { Name: "Chicken", Quantity: 2, Unit: "serving", Calories: 300 });
+
+        Assert.Contains(saved.Items, i =>
+            i is { Name: "Rice", Quantity: 1.5f, Unit: "cup", Calories: 300 });
+    }
+
+    [Fact]
+    public async Task DietService_ListMealsAsync_ReturnsOnlyCurrentUsersMealsWithAggregates()
+    {
+        await using var db = new AppDbContext(_options);
+
+        var user1 = MakeUser($"dietsvc_list_a_{Guid.NewGuid():N}@example.com");
+        var user2 = MakeUser($"dietsvc_list_b_{Guid.NewGuid():N}@example.com");
+
+        db.Users.AddRange(user1, user2);
+
+        db.DietEntries.AddRange(
+            new DietEntry
+            {
+                UserId = user1.Id,
+                EatenAt = new DateTime(2026, 4, 3, 8, 0, 0, DateTimeKind.Utc),
+                MealType = "Breakfast",
+                Notes = "Mine",
+                Items =
+                [
+                    new MealItemEntry
+                    {
+                        Name = "Oats",
+                        Quantity = 1,
+                        Unit = "cup",
+                        Calories = 300,
+                        ProteinGrams = 10,
+                        CarbsGrams = 54,
+                        FatGrams = 5
+                    },
+
+                    new MealItemEntry
+                    {
+                        Name = "Milk",
+                        Quantity = 1,
+                        Unit = "cup",
+                        Calories = 100,
+                        ProteinGrams = 8,
+                        CarbsGrams = 12,
+                        FatGrams = 3
+                    }
+                ]
+            },
+            new DietEntry
+            {
+                UserId = user2.Id,
+                EatenAt = new DateTime(2026, 4, 3, 9, 0, 0, DateTimeKind.Utc),
+                MealType = "Breakfast",
+                Notes = "Not mine",
+                Items =
+                [
+                    new MealItemEntry
+                    {
+                        Name = "Toast",
+                        Quantity = 2,
+                        Unit = "slice",
+                        Calories = 180,
+                        ProteinGrams = 6,
+                        CarbsGrams = 30,
+                        FatGrams = 2
+                    }
+                ]
+            });
+
+        await db.SaveChangesAsync();
+
+        var service = CreateDietService(user1.Id);
+
+        var results = await service.ListMealsAsync(
+            new DateTime(2026, 4, 3, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 4, 3, 23, 59, 59, DateTimeKind.Utc));
+
+        Assert.Single(results);
+
+        var meal = results[0];
+        Assert.Equal("Breakfast", meal.MealType);
+        Assert.Equal("Mine", meal.Notes);
+        Assert.Equal(2, meal.ItemCount);
+        Assert.Equal(400, meal.TotalCalories);
+        Assert.Equal(18, meal.TotalProteinGrams);
+        Assert.Equal(66, meal.TotalCarbsGrams);
+        Assert.Equal(8, meal.TotalFatGrams);
+    }
+
+    [Fact]
+    public async Task DietService_GetSummaryAsync_ReturnsTotalsAndDerivedTarget()
+    {
+        await using var db = new AppDbContext(_options);
+
+        var user = MakeUser($"dietsvc_summary_{Guid.NewGuid():N}@example.com");
+        user.Age = 20;
+        user.Sex = Sex.Male;
+        user.HeightM = 1.80f;
+
+        db.Users.Add(user);
+
+        db.WeightEntries.AddRange(
+            new WeightEntry
+            {
+                UserId = user.Id,
+                Date = new DateTime(2026, 4, 1, 8, 0, 0, DateTimeKind.Utc),
+                WeightKg = 80
+            },
+            new WeightEntry
+            {
+                UserId = user.Id,
+                Date = new DateTime(2026, 4, 3, 8, 0, 0, DateTimeKind.Utc),
+                WeightKg = 82
+            });
+
+        db.DietEntries.AddRange(
+            new DietEntry
+            {
+                UserId = user.Id,
+                EatenAt = new DateTime(2026, 4, 3, 8, 0, 0, DateTimeKind.Utc),
+                MealType = "Breakfast",
+                Notes = "Breakfast",
+                Items =
+                [
+                    new MealItemEntry
+                    {
+                        Name = "Oats", Quantity = 1, Unit = "cup", Calories = 300, ProteinGrams = 10, CarbsGrams = 54,
+                        FatGrams = 5
+                    },
+                    new MealItemEntry
+                    {
+                        Name = "Milk", Quantity = 1, Unit = "cup", Calories = 100, ProteinGrams = 8, CarbsGrams = 12,
+                        FatGrams = 3
+                    }
+                ]
+            },
+            new DietEntry
+            {
+                UserId = user.Id,
+                EatenAt = new DateTime(2026, 4, 3, 18, 0, 0, DateTimeKind.Utc),
+                MealType = "Dinner",
+                Notes = "Dinner",
+                Items =
+                [
+                    new MealItemEntry
+                    {
+                        Name = "Chicken", Quantity = 1, Unit = "plate", Calories = 300, ProteinGrams = 50,
+                        CarbsGrams = 0, FatGrams = 8
+                    },
+                    new MealItemEntry
+                    {
+                        Name = "Rice", Quantity = 1, Unit = "plate", Calories = 250, ProteinGrams = 5, CarbsGrams = 55,
+                        FatGrams = 1
+                    }
+                ]
+            });
+
+        await db.SaveChangesAsync();
+
+        var service = CreateDietService(user.Id);
+
+        var summary = await service.GetSummaryAsync(
+            new DateTime(2026, 4, 3, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 4, 3, 23, 59, 59, DateTimeKind.Utc));
+
+        Assert.Equal(2, summary.MealCount);
+        Assert.Equal(4, summary.ItemCount);
+        Assert.Equal(950, summary.TotalCalories);
+        Assert.Equal(73, summary.TotalProteinGrams);
+        Assert.Equal(121, summary.TotalCarbsGrams);
+        Assert.Equal(17, summary.TotalFatGrams);
+        Assert.Equal(475, summary.AverageCaloriesPerMeal);
+
+        // 10*82 + 6.25*180 - 5*20 + 5 = 1850; sedentary factor 1.2 => 2220
+        Assert.Equal(2220, summary.DailyCalorieTarget);
+        Assert.Equal(1270, summary.CaloriesRemaining);
+        Assert.Contains("Mifflin-St Jeor", summary.TargetMethodDescription);
+    }
+
+    [Fact]
+    public async Task DietService_GetSummaryAsync_RefreshesAgainstLatestDatabaseState()
+    {
+        await using var db = new AppDbContext(_options);
+
+        var user = MakeUser($"dietsvc_refresh_{Guid.NewGuid():N}@example.com");
+        user.Age = 20;
+        user.Sex = Sex.Male;
+        user.HeightM = 1.80f;
+
+        db.Users.Add(user);
+        db.DietEntries.Add(new DietEntry
+        {
+            UserId = user.Id,
+            EatenAt = new DateTime(2026, 4, 3, 12, 0, 0, DateTimeKind.Utc),
+            MealType = "Lunch",
+            Notes = "Refresh test",
+            Items =
+            [
+                new MealItemEntry
+                {
+                    Name = "Meal",
+                    Quantity = 1,
+                    Unit = "serving",
+                    Calories = 500,
+                    ProteinGrams = 30,
+                    CarbsGrams = 40,
+                    FatGrams = 10
+                }
+            ]
+        });
+
+        await db.SaveChangesAsync();
+
+        var service = CreateDietService(user.Id);
+
+        var before = await service.GetSummaryAsync(
+            new DateTime(2026, 4, 3, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 4, 3, 23, 59, 59, DateTimeKind.Utc));
+
+        Assert.Equal(1, before.MealCount);
+        Assert.Null(before.DailyCalorieTarget);
+
+        db.WeightEntries.Add(new WeightEntry
+        {
+            UserId = user.Id,
+            Date = new DateTime(2026, 4, 3, 20, 0, 0, DateTimeKind.Utc),
+            WeightKg = 90
+        });
+
+        await db.SaveChangesAsync();
+
+        var after = await service.GetSummaryAsync(
+            new DateTime(2026, 4, 3, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 4, 3, 23, 59, 59, DateTimeKind.Utc));
+
+        Assert.NotNull(after.DailyCalorieTarget);
+        Assert.NotEqual(before.DailyCalorieTarget, after.DailyCalorieTarget);
+    }
+    
+    [Fact]
+    public async Task AccountService_Login_ValidCredentials_SetsCurrentUser()
+    {
+        var service = CreateAccountService();
+
+        var email = $"auth_login_{Guid.NewGuid():N}@example.com";
+
+        var register = await service.RegisterAsync(
+            email,
+            "Auth User",
+            "CorrectPassword123!",
+            20,
+            Sex.Male,
+            1.80f);
+
+        Assert.True(register.Success);
+
+        await service.SignOutAsync();
+
+        var login = await service.SignInAsync(email, "CorrectPassword123!");
+
+        Assert.True(login.Success);
+        Assert.Null(login.Error);
+        Assert.True(service.IsSignedIn);
+        Assert.NotNull(service.CurrentUser);
+        Assert.Equal(email, service.CurrentUser!.Email);
+    }
+
+    [Fact]
+    public async Task AccountService_Register_DuplicateEmail_ReturnsFriendlyError()
+    {
+        var service = CreateAccountService();
+
+        var first = await service.RegisterAsync(
+            "  DUPETEST@example.com  ",
+            "User One",
+            "Password123!",
+            20,
+            Sex.Male,
+            1.80f);
+
+        var second = await service.RegisterAsync(
+            "dupetest@example.com",
+            "User Two",
+            "Password123!",
+            20,
+            Sex.Male,
+            1.80f);
+
+        Assert.True(first.Success);
+        Assert.False(second.Success);
+        Assert.Equal("An account with that email already exists.", second.Error);
+    }
+
+    [Fact]
+    public async Task AuthLogout_Endpoint_RedirectsToLogout()
+    {
+        var auth = new FakeAuthenticationService();
+        var context = CreateEndpointContext(auth: auth);
+
+        await InvokePrivateStaticTaskMethod(typeof(AuthEndpoints), "AuthLogout", context);
+
+        Assert.True(auth.SignOutCalled);
+        Assert.Equal(StatusCodes.Status302Found, context.Response.StatusCode);
+        Assert.Equal("/logout", context.Response.Headers.Location.ToString());
+    }
+
+    [Fact]
+    public async Task AuthDeleteAccount_Endpoint_Success_RedirectsToLoginDeleted()
+    {
+        var userId = Guid.NewGuid();
+        var auth = new FakeAuthenticationService();
+        var accounts = new StubAccountService
+        {
+            DeleteAccountResponse = (true, null)
+        };
+
+        var context = CreateEndpointContext(
+            userId,
+            new Dictionary<string, string>
+            {
+                ["CurrentPassword"] = "CorrectPassword123!",
+                ["Confirmation"] = "DELETE"
+            },
+            auth);
+
+        var result = await InvokePrivateStaticResultMethod(
+            typeof(AuthEndpoints),
+            "AuthDeleteAccount",
+            context,
+            accounts);
+
+        await result.ExecuteAsync(context);
+
+        Assert.True(accounts.DeleteAccountCalled);
+        Assert.Equal(userId, accounts.DeleteAccountUserId);
+        Assert.Equal("CorrectPassword123!", accounts.DeleteAccountPassword);
+
+        Assert.True(auth.SignOutCalled);
+        Assert.Equal(StatusCodes.Status302Found, context.Response.StatusCode);
+        Assert.Equal("/login?deleted=1", context.Response.Headers.Location.ToString());
+    }
+    
+    [Fact]
+    public async Task WorkoutService_AddWorkoutAsync_PersistsWorkoutAndMappedExercises()
+    {
+        await using var db = new AppDbContext(_options);
+
+        var user = MakeUser($"workout_add_{Guid.NewGuid():N}@example.com");
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var service = CreateWorkoutService(user.Id);
+
+        var exercise = MakeWorkoutExerciseInput(
+            name: "  Treadmill Run  ",
+            sets: 0,
+            reps: 0,
+            weightKg: 0,
+            distanceKm: 5,
+            durationMinutes: 30);
+
+        var input = MakeWorkoutInput(
+            startedAt: new DateTime(2026, 4, 4, 9, 0, 0, DateTimeKind.Utc),
+            durationMinutes: 45,
+            selfReportedIntensity: 4,
+            averageHeartRate: 150,
+            workoutType: WorkoutType.Cardio,
+            notes: "  Good session  ",
+            exercise);
+
+        var result = await service.AddWorkoutAsync(input);
+
+        Assert.True(result.Success);
+        Assert.Null(result.Error);
+        Assert.NotNull(result.WorkoutId);
+
+        var saved = await db.WorkoutEntries
+            .Include(w => w.Exercises)
+            .SingleAsync(w => w.Id == result.WorkoutId!.Value);
+
+        Assert.Equal(user.Id, saved.UserId);
+        Assert.Equal(new DateTime(2026, 4, 4, 9, 0, 0, DateTimeKind.Utc), saved.StartedAt);
+        Assert.Equal(45, saved.DurationMinutes);
+        Assert.Equal((byte)4, saved.SelfReportedIntensity);
+        Assert.Equal(150, saved.AverageHeartRate);
+        Assert.Equal(WorkoutType.Cardio, saved.WorkoutType);
+        Assert.Equal("Good session", saved.Notes);
+
+        Assert.Single(saved.Exercises);
+        Assert.Equal("Treadmill Run", saved.Exercises[0].Name);
+        Assert.Equal(TimeSpan.FromMinutes(30), saved.Exercises[0].Time);
+        Assert.Equal(5, saved.Exercises[0].DistanceKm);
+    }
+
+    [Fact]
+    public async Task WorkoutService_ListPastWorkoutsAsync_ReturnsOnlyCurrentUsersWorkoutsInDescendingOrder()
+    {
+        await using var db = new AppDbContext(_options);
+
+        var user1 = MakeUser($"workout_list_a_{Guid.NewGuid():N}@example.com");
+        var user2 = MakeUser($"workout_list_b_{Guid.NewGuid():N}@example.com");
+
+        db.Users.AddRange(user1, user2);
+
+        db.WeightEntries.Add(new WeightEntry
+        {
+            UserId = user1.Id,
+            Date = new DateTime(2026, 4, 4, 7, 0, 0, DateTimeKind.Utc),
+            WeightKg = 80
+        });
+
+        var olderExercise = MakeExerciseEntry(
+            name: "Bike",
+            sets: 0,
+            reps: 0,
+            weightKg: 0,
+            distanceKm: 10,
+            durationMinutes: 20);
+
+        var newerExercise = MakeExerciseEntry(
+            name: "Run",
+            sets: 0,
+            reps: 0,
+            weightKg: 0,
+            distanceKm: 4,
+            durationMinutes: 30);
+
+        db.WorkoutEntries.AddRange(
+            new WorkoutEntry
+            {
+                UserId = user1.Id,
+                StartedAt = new DateTime(2026, 4, 3, 8, 0, 0, DateTimeKind.Utc),
+                DurationMinutes = 25,
+                SelfReportedIntensity = 3,
+                AverageHeartRate = 135,
+                WorkoutType = WorkoutType.Cardio,
+                Notes = "Older workout",
+                Exercises = new List<ExerciseEntry> { olderExercise }
+            },
+            new WorkoutEntry
+            {
+                UserId = user1.Id,
+                StartedAt = new DateTime(2026, 4, 4, 10, 0, 0, DateTimeKind.Utc),
+                DurationMinutes = 35,
+                SelfReportedIntensity = 4,
+                AverageHeartRate = 150,
+                WorkoutType = WorkoutType.Cardio,
+                Notes = "Newest workout",
+                Exercises = new List<ExerciseEntry> { newerExercise }
+            },
+            new WorkoutEntry
+            {
+                UserId = user2.Id,
+                StartedAt = new DateTime(2026, 4, 4, 11, 0, 0, DateTimeKind.Utc),
+                DurationMinutes = 40,
+                SelfReportedIntensity = 5,
+                AverageHeartRate = 160,
+                WorkoutType = WorkoutType.Cardio,
+                Notes = "Other user workout",
+                Exercises = new List<ExerciseEntry>
+                {
+                    MakeExerciseEntry("Other", 0, 0, 0, 2, 15)
+                }
+            });
+
+        await db.SaveChangesAsync();
+
+        var service = CreateWorkoutService(user1.Id);
+
+        var results = await service.ListPastWorkoutsAsync(
+            new DateTime(2026, 4, 3, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 4, 4, 23, 59, 59, DateTimeKind.Utc));
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal("Newest workout", results[0].Notes);
+        Assert.Equal("Older workout", results[1].Notes);
+        Assert.All(results, r => Assert.NotEqual("Other user workout", r.Notes));
+
+        Assert.Equal(1, results[0].ExerciseCount);
+        Assert.Equal(1, results[1].ExerciseCount);
+    }
+
+    [Fact]
+    public async Task WorkoutService_GetWorkoutAsync_ComputesExerciseAndTotalCalories()
+    {
+        await using var db = new AppDbContext(_options);
+
+        var user = MakeUser($"workout_detail_{Guid.NewGuid():N}@example.com");
+        db.Users.Add(user);
+
+        db.WeightEntries.Add(new WeightEntry
+        {
+            UserId = user.Id,
+            Date = new DateTime(2026, 4, 4, 7, 0, 0, DateTimeKind.Utc),
+            WeightKg = 80
+        });
+
+        var exercise1 = MakeExerciseEntry("Run", 0, 0, 0, 5, 30);
+        var exercise2 = MakeExerciseEntry("Bike", 0, 0, 0, 8, 20);
+
+        var workout = new WorkoutEntry
+        {
+            UserId = user.Id,
+            StartedAt = new DateTime(2026, 4, 4, 9, 0, 0, DateTimeKind.Utc),
+            DurationMinutes = 50,
+            SelfReportedIntensity = 4,
+            AverageHeartRate = 148,
+            WorkoutType = WorkoutType.Cardio,
+            Notes = "Detail workout",
+            Exercises = new List<ExerciseEntry> { exercise1, exercise2 }
+        };
+
+        db.WorkoutEntries.Add(workout);
+        await db.SaveChangesAsync();
+
+        var service = CreateWorkoutService(user.Id);
+
+        var result = await service.GetWorkoutAsync(workout.Id);
+
+        Assert.True(result.Success);
+        Assert.Null(result.Error);
+        Assert.NotNull(result.Workout);
+
+        var detail = result.Workout!;
+        Assert.Equal(80, detail.UserWeightKg);
+        Assert.Equal(2, detail.Exercises.Count);
+
+        var expected1 = ComputeExpectedCalories(80, 30, GetActivityTypeValue(exercise1));
+        var expected2 = ComputeExpectedCalories(80, 20, GetActivityTypeValue(exercise2));
+
+        Assert.Equal(expected1, detail.Exercises[0].EstimatedCaloriesBurned);
+        Assert.Equal(expected2, detail.Exercises[1].EstimatedCaloriesBurned);
+
+        Assert.NotNull(expected1);
+        Assert.NotNull(expected2);
+
+        var expectedTotal = Math.Round((expected1 ?? 0) + (expected2 ?? 0), 2);
+
+        Assert.Equal(expectedTotal, detail.EstimatedCaloriesBurned);
+    }
+
+    [Fact]
+    public async Task WorkoutService_UpdateWorkoutAsync_UpdatesMetadata_WhenExercisesUnchanged()
+    {
+        await using var db = new AppDbContext(_options);
+
+        var user = MakeUser($"workout_update_{Guid.NewGuid():N}@example.com");
+        db.Users.Add(user);
+
+        var originalExercise = MakeExerciseEntry("Bench Press", 3, 8, 80, 0, 0);
+
+        var workout = new WorkoutEntry
+        {
+            UserId = user.Id,
+            StartedAt = new DateTime(2026, 4, 4, 9, 0, 0, DateTimeKind.Utc),
+            DurationMinutes = 60,
+            SelfReportedIntensity = 3,
+            AverageHeartRate = 120,
+            WorkoutType = WorkoutType.StrengthTraining,
+            Notes = "Original",
+            Exercises = new List<ExerciseEntry> { originalExercise }
+        };
+
+        db.WorkoutEntries.Add(workout);
+        await db.SaveChangesAsync();
+
+        var service = CreateWorkoutService(user.Id);
+
+        var sameExerciseInput = MakeWorkoutExerciseInput(
+            name: "Bench Press",
+            sets: 3,
+            reps: 8,
+            weightKg: 80,
+            distanceKm: 0,
+            durationMinutes: 0);
+
+        CopyActivityType(originalExercise, sameExerciseInput);
+
+        var input = MakeWorkoutInput(
+            startedAt: new DateTime(2026, 4, 4, 10, 30, 0, DateTimeKind.Utc),
+            durationMinutes: 75,
+            selfReportedIntensity: 5,
+            averageHeartRate: 132,
+            workoutType: WorkoutType.StrengthTraining,
+            notes: "  Updated note  ",
+            sameExerciseInput);
+
+        var result = await service.UpdateWorkoutAsync(workout.Id, input);
+
+        Assert.True(result.Success);
+        Assert.Null(result.Error);
+
+        db.ChangeTracker.Clear();
+
+        var saved = await db.WorkoutEntries
+            .Include(w => w.Exercises)
+            .SingleAsync(w => w.Id == workout.Id);
+
+        Assert.Equal(new DateTime(2026, 4, 4, 10, 30, 0, DateTimeKind.Utc), saved.StartedAt);
+        Assert.Equal(75, saved.DurationMinutes);
+        Assert.Equal((byte)5, saved.SelfReportedIntensity);
+        Assert.Equal(132, saved.AverageHeartRate);
+        Assert.Equal("Updated note", saved.Notes);
+        Assert.Single(saved.Exercises);
+        Assert.Equal("Bench Press", saved.Exercises[0].Name);
+    }
+
+    [Fact]
+    public async Task WorkoutService_UpdateWorkoutAsync_RejectsExerciseChanges()
+    {
+        await using var db = new AppDbContext(_options);
+
+        var user = MakeUser($"workout_update_reject_{Guid.NewGuid():N}@example.com");
+        db.Users.Add(user);
+
+        var originalExercise = MakeExerciseEntry("Row", 3, 10, 50, 0, 0);
+
+        var workout = new WorkoutEntry
+        {
+            UserId = user.Id,
+            StartedAt = new DateTime(2026, 4, 4, 9, 0, 0, DateTimeKind.Utc),
+            DurationMinutes = 45,
+            SelfReportedIntensity = 3,
+            AverageHeartRate = 125,
+            WorkoutType = WorkoutType.StrengthTraining,
+            Notes = "Original",
+            Exercises = new List<ExerciseEntry> { originalExercise }
+        };
+
+        db.WorkoutEntries.Add(workout);
+        await db.SaveChangesAsync();
+
+        var service = CreateWorkoutService(user.Id);
+
+        var changedExerciseInput = MakeWorkoutExerciseInput(
+            name: "Row",
+            sets: 4, // changed from 3
+            reps: 10,
+            weightKg: 50,
+            distanceKm: 0,
+            durationMinutes: 0);
+
+        CopyActivityType(originalExercise, changedExerciseInput);
+
+        var input = MakeWorkoutInput(
+            startedAt: workout.StartedAt,
+            durationMinutes: workout.DurationMinutes,
+            selfReportedIntensity: workout.SelfReportedIntensity,
+            averageHeartRate: workout.AverageHeartRate,
+            workoutType: workout.WorkoutType,
+            notes: workout.Notes,
+            changedExerciseInput);
+
+        var result = await service.UpdateWorkoutAsync(workout.Id, input);
+
+        Assert.False(result.Success);
+        Assert.Equal("Updating exercises is not supported yet. Keep the existing exercises unchanged or recreate the workout.", result.Error);
+    }
+
+    [Fact]
+    public async Task WorkoutService_DeleteWorkoutAsync_RemovesOwnedWorkout()
+    {
+        await using var db = new AppDbContext(_options);
+
+        var user = MakeUser($"workout_delete_{Guid.NewGuid():N}@example.com");
+        db.Users.Add(user);
+
+        var workout = new WorkoutEntry
+        {
+            UserId = user.Id,
+            StartedAt = new DateTime(2026, 4, 4, 9, 0, 0, DateTimeKind.Utc),
+            DurationMinutes = 30,
+            SelfReportedIntensity = 2,
+            AverageHeartRate = 118,
+            WorkoutType = WorkoutType.Cardio,
+            Notes = "Delete me",
+            Exercises = new List<ExerciseEntry>
+            {
+                MakeExerciseEntry("Walk", 0, 0, 0, 2, 30)
+            }
+        };
+
+        db.WorkoutEntries.Add(workout);
+        await db.SaveChangesAsync();
+
+        var service = CreateWorkoutService(user.Id);
+
+        var result = await service.DeleteWorkoutAsync(workout.Id);
+
+        Assert.True(result.Success);
+        Assert.Null(result.Error);
+
+        db.ChangeTracker.Clear();
+
+        var deleted = await db.WorkoutEntries.SingleOrDefaultAsync(w => w.Id == workout.Id);
+        Assert.Null(deleted);
+    }
+
     // ----------------------------
     // Metadata + reflection helpers
     // ----------------------------
-
-    private sealed record UserMeta(
-        Type UserClrType,
-        string KeyPropName,
-        string EmailPropName,
-        string DisplayNamePropName,
-        string? PasswordPropName);
-    
-    private sealed class TestDbContextFactory(DbContextOptions<AppDbContext> options)
-        : IDbContextFactory<AppDbContext>
-    {
-        public AppDbContext CreateDbContext() => new(options);
-
-        public Task<AppDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult(CreateDbContext());
-    }
-
-    private sealed record EntryMeta(Type EntryClrType, string KeyPropName, string? UserFkPropName, string MutablePropName);
 
     private static UserEntry MakeUser(string email) => new()
     {
@@ -721,8 +1665,7 @@ public sealed class UnitTest1 : IDisposable
     
     private static void SetUserPassword(object user, UserMeta meta, string rawPassword)
     {
-        if (string.IsNullOrWhiteSpace(meta.PasswordPropName))
-            return;
+        if (string.IsNullOrWhiteSpace(meta.PasswordPropName)) return;
 
         var prop = user.GetType().GetProperty(meta.PasswordPropName!, BindingFlags.Instance | BindingFlags.Public)
                    ?? throw new InvalidOperationException(
@@ -752,19 +1695,16 @@ public sealed class UnitTest1 : IDisposable
 
         var stored = GetPropValue(user, meta.PasswordPropName!) as string;
 
-        if (string.IsNullOrWhiteSpace(stored))
-            return false;
+        if (string.IsNullOrWhiteSpace(stored)) return false;
 
         // Plaintext fallback
-        if (stored == rawPassword)
-            return true;
+        if (stored == rawPassword) return true;
 
         // Identity hash fallback
         var hasher = new PasswordHasher<object>();
         var result = hasher.VerifyHashedPassword(user, stored, rawPassword);
 
-        return result == PasswordVerificationResult.Success ||
-               result == PasswordVerificationResult.SuccessRehashNeeded;
+        return result is PasswordVerificationResult.Success or PasswordVerificationResult.SuccessRehashNeeded;
     }
 
     private static EntryMeta GetEntryMeta(AppDbContext db, string kind, UserMeta userMeta)
@@ -859,8 +1799,7 @@ public sealed class UnitTest1 : IDisposable
                 x.ValueGenerated == ValueGenerated.Never &&
                 string.Equals(x.Name, pref, StringComparison.OrdinalIgnoreCase));
 
-            if (p is not null)
-                return p.Name;
+            if (p is not null) return p.Name;
         }
 
         // Fallback: first reasonable scalar
@@ -1113,8 +2052,7 @@ public sealed class UnitTest1 : IDisposable
     private static void SetPropValue(object obj, string propName, object value)
     {
         var prop = obj.GetType().GetProperty(propName, BindingFlags.Instance | BindingFlags.Public);
-        if (prop is null)
-            throw new InvalidOperationException($"Property '{propName}' not found on type '{obj.GetType().Name}'.");
+        if (prop is null) throw new InvalidOperationException($"Property '{propName}' not found on type '{obj.GetType().Name}'.");
 
         prop.SetValue(obj, value);
     }
@@ -1122,8 +2060,7 @@ public sealed class UnitTest1 : IDisposable
     private static void SetConvertedPropValue(object obj, string propName, object value)
     {
         var prop = obj.GetType().GetProperty(propName, BindingFlags.Instance | BindingFlags.Public);
-        if (prop is null)
-            throw new InvalidOperationException($"Property '{propName}' not found on type '{obj.GetType().Name}'.");
+        if (prop is null) throw new InvalidOperationException($"Property '{propName}' not found on type '{obj.GetType().Name}'.");
 
         var targetType = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
 
@@ -1151,5 +2088,249 @@ public sealed class UnitTest1 : IDisposable
         }
 
         prop.SetValue(obj, converted);
+    }
+    
+    private static SleepService CreateSleepService(FakeSleepStore store, Guid? userId)
+    {
+        var httpContext = new DefaultHttpContext();
+
+        if (userId.HasValue)
+        {
+            httpContext.User = new ClaimsPrincipal(
+                new ClaimsIdentity(
+                    [new Claim(ClaimTypes.NameIdentifier, userId.Value.ToString())],
+                    authenticationType: "TestAuth"));
+        }
+
+        return new SleepService(store, new HttpContextAccessor { HttpContext = httpContext });
+    }
+
+    private static SleepEntryInput MakeSleepInput(DateTime start, DateTime end, float quality, string notes = "")
+    {
+        return new SleepEntryInput
+        {
+            StartTime = start,
+            EndTime = end,
+            SleepQuality = quality,
+            Notes = notes
+        };
+    }
+    
+    private DietService CreateDietService(Guid? userId)
+    {
+        var httpContext = new DefaultHttpContext();
+
+        if (userId.HasValue)
+        {
+            httpContext.User = new ClaimsPrincipal(
+                new ClaimsIdentity(
+                    [new Claim(ClaimTypes.NameIdentifier, userId.Value.ToString())],
+                    "TestAuth"));
+        }
+
+        return new DietService(new DietStore(_factory), new AccountStore(_factory), _factory, new HttpContextAccessor { HttpContext = httpContext });
+    }
+    
+    private AccountService CreateAccountService()
+    {
+        return new AccountService(new AccountStore(_factory));
+    }
+
+    private static DefaultHttpContext CreateEndpointContext(
+        Guid? userId = null,
+        Dictionary<string, string>? formFields = null,
+        FakeAuthenticationService? auth = null)
+    {
+        var context = new DefaultHttpContext
+        {
+            Response = { Body = new MemoryStream() },
+            RequestServices = BuildEndpointServices(auth ?? new FakeAuthenticationService())
+        };
+
+        if (userId.HasValue)
+        {
+            context.User = new ClaimsPrincipal(
+                new ClaimsIdentity(
+                    [new Claim(ClaimTypes.NameIdentifier, userId.Value.ToString())],
+                    "TestAuth"));
+        }
+
+        if (formFields is null) return context;
+        var form = new FormCollection(
+            formFields.ToDictionary(
+                kvp => kvp.Key,
+                kvp => new StringValues(kvp.Value)));
+
+        context.Features.Set<IFormFeature>(new FormFeature(form));
+
+        return context;
+    }
+
+    private static ServiceProvider BuildEndpointServices(FakeAuthenticationService auth)
+    {
+        var services = new ServiceCollection();
+
+        services.AddLogging();
+        services.AddSingleton<IAuthenticationService>(auth);
+
+        return services.BuildServiceProvider();
+    }
+
+    private static async Task InvokePrivateStaticTaskMethod(Type declaringType, string methodName, params object[] args)
+    {
+        var method = declaringType.GetMethod(
+            methodName,
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException($"Could not find method '{methodName}'.");
+
+        var task = method.Invoke(null, args) as Task
+            ?? throw new InvalidOperationException($"Method '{methodName}' did not return Task.");
+
+        await task;
+    }
+
+    private static async Task<IResult> InvokePrivateStaticResultMethod(Type declaringType, string methodName, params object[] args)
+    {
+        var method = declaringType.GetMethod(
+            methodName,
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException($"Could not find method '{methodName}'.");
+
+        var task = method.Invoke(null, args) as Task<IResult>
+            ?? throw new InvalidOperationException($"Method '{methodName}' did not return Task<IResult>.");
+
+        return await task;
+    }
+    
+    private WorkoutService CreateWorkoutService(Guid? userId)
+    {
+        var httpContext = new DefaultHttpContext();
+
+        if (userId.HasValue)
+        {
+            httpContext.User = new ClaimsPrincipal(
+                new ClaimsIdentity(
+                    [new Claim(ClaimTypes.NameIdentifier, userId.Value.ToString())],
+                    "TestAuth"));
+        }
+
+        return new WorkoutService(new WorkoutStore(_factory), new WeightStore(_factory), new HttpContextAccessor { HttpContext = httpContext });
+    }
+
+    private static WorkoutEntryInput MakeWorkoutInput(
+        DateTime startedAt,
+        int durationMinutes,
+        int selfReportedIntensity,
+        int averageHeartRate,
+        WorkoutType workoutType,
+        string notes,
+        params WorkoutExerciseInput[] exercises)
+    {
+        return new WorkoutEntryInput
+        {
+            StartedAt = startedAt,
+            DurationMinutes = durationMinutes,
+            SelfReportedIntensity = selfReportedIntensity,
+            AverageHeartRate = averageHeartRate,
+            WorkoutType = workoutType,
+            Notes = notes,
+            Exercises = exercises.ToList()
+        };
+    }
+
+    private static WorkoutExerciseInput MakeWorkoutExerciseInput(
+        string name,
+        int sets,
+        int reps,
+        float weightKg,
+        float distanceKm,
+        int durationMinutes)
+    {
+        var input = new WorkoutExerciseInput
+        {
+            Name = name,
+            Sets = sets,
+            Reps = reps,
+            WeightKg = weightKg,
+            DistanceKm = distanceKm,
+            DurationMinutes = durationMinutes
+        };
+
+        TrySetFirstNonDefaultActivityType(input);
+        return input;
+    }
+
+    private static ExerciseEntry MakeExerciseEntry(
+        string name,
+        int sets,
+        int reps,
+        float weightKg,
+        float distanceKm,
+        int durationMinutes)
+    {
+        var entry = new ExerciseEntry
+        {
+            Name = name,
+            Sets = sets,
+            Reps = reps,
+            WeightKg = weightKg,
+            DistanceKm = distanceKm,
+            Time = TimeSpan.FromMinutes(durationMinutes)
+        };
+
+        TrySetFirstNonDefaultActivityType(entry);
+        return entry;
+    }
+
+    private static void TrySetFirstNonDefaultActivityType(object target)
+    {
+        var prop = target.GetType().GetProperty("ActivityType", BindingFlags.Instance | BindingFlags.Public);
+        if (prop is null || !prop.CanWrite || !prop.PropertyType.IsEnum) return;
+
+        var values = Enum.GetValues(prop.PropertyType);
+        if (values.Length == 0) return;
+
+        var value = values.Length > 1 ? values.GetValue(1)! : values.GetValue(0)!;
+        prop.SetValue(target, value);
+    }
+
+    private static void CopyActivityType(object source, object destination)
+    {
+        var sourceProp = source.GetType().GetProperty("ActivityType", BindingFlags.Instance | BindingFlags.Public);
+        var destinationProp = destination.GetType().GetProperty("ActivityType", BindingFlags.Instance | BindingFlags.Public);
+
+        if (sourceProp is null || destinationProp is null || !destinationProp.CanWrite) return;
+
+        var value = sourceProp.GetValue(source);
+        if (value is not null) destinationProp.SetValue(destination, value);
+    }
+
+    private static object? GetActivityTypeValue(object source)
+    {
+        var prop = source.GetType().GetProperty("ActivityType", BindingFlags.Instance | BindingFlags.Public);
+        return prop?.GetValue(source);
+    }
+
+    private static double? ComputeExpectedCalories(float? userWeightKg, int durationMinutes, object? activityType)
+    {
+        if (userWeightKg is null || userWeightKg <= 0 || durationMinutes <= 0 || activityType is null) return null;
+
+        var met = InvokeWorkoutMetCatalog(activityType);
+        if (met <= 0) return null;
+
+        var caloriesPerMinute = (met * 3.5 * userWeightKg.Value) / 200.0;
+        return Math.Round(caloriesPerMinute * durationMinutes, 2);
+    }
+
+    private static double InvokeWorkoutMetCatalog(object activityType)
+    {
+        var catalogType = typeof(WorkoutService).Assembly
+            .GetType("HealthingHand.Web.Services.WorkoutItems.WorkoutActivityMetCatalog")
+            ?? throw new InvalidOperationException("Could not locate WorkoutActivityMetCatalog.");
+
+        var method = catalogType.GetMethod("GetMet", BindingFlags.Public | BindingFlags.Static)
+            ?? throw new InvalidOperationException("Could not locate WorkoutActivityMetCatalog.GetMet.");
+
+        return Convert.ToDouble(method.Invoke(null, [activityType]));
     }
 }
