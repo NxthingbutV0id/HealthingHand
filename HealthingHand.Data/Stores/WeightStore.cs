@@ -8,6 +8,7 @@ public interface IWeightStore : IStore<WeightEntry, int>
 {
     Task<List<WeightEntry>> ListForUserAsync(Guid userId, DateTime from, DateTime to);
     Task<WeightEntry?> GetForDateAsync(Guid userId, DateTime date);
+    Task<WeightEntry?> GetLatestForUserAsync(Guid userId);
 }
 
 public class WeightStore(IDbContextFactory<AppDbContext> factory) : IWeightStore
@@ -59,5 +60,15 @@ public class WeightStore(IDbContextFactory<AppDbContext> factory) : IWeightStore
 
         db.WeightEntries.Remove(entry);
         await db.SaveChangesAsync();
+    }
+
+    public async Task<WeightEntry?> GetLatestForUserAsync(Guid userId)
+    {
+        await using var db = await factory.CreateDbContextAsync();
+
+        return await db.WeightEntries
+            .Where(entry => entry.UserId == userId)
+            .OrderByDescending(entry => entry.Date)
+            .FirstOrDefaultAsync();
     }
 }

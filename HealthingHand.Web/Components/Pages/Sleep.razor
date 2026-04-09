@@ -12,6 +12,10 @@
 
 <p class="text-muted">Log your sleep and review your recent nights.</p>
 
+<p class="mb-4">
+    <a class="btn btn-outline-primary btn-sm" href="/sleep-goals">Manage sleep goals</a>
+</p>
+
 @if (!string.IsNullOrWhiteSpace(errorMessage))
 {
     <div class="alert alert-danger" role="alert">@errorMessage</div>
@@ -67,6 +71,10 @@
                         </div>
                     </div>
                 </EditForm>
+
+                <div class="alert alert-warning mt-3 mb-0" role="alert">
+                    Entries under 4.5 hours are flagged as very low sleep so they stand out in your history.
+                </div>
             </div>
         </div>
     </div>
@@ -162,7 +170,13 @@
                             <td>@entry.SleepDate.ToString("MMM dd, yyyy")</td>
                             <td>@entry.StartTime.ToString("hh:mm tt")</td>
                             <td>@entry.EndTime.ToString("hh:mm tt")</td>
-                            <td>@FormatDuration(entry.DurationHours)</td>
+                            <td>
+                                @FormatDuration(entry.DurationHours)
+                                @if (IsExcessivelyLowSleep(entry.DurationHours))
+                                {
+                                    <span class="badge text-bg-warning ms-2">Low</span>
+                                }
+                            </td>
                             <td>@entry.SleepQuality.ToString("0.##")/5</td>
                             <td>
                                 <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => ToggleDetails(entry.Id)">
@@ -340,7 +354,9 @@
             return;
         }
 
-        message = "Sleep entry saved.";
+        message = IsExcessivelyLowSleep((end - start).TotalHours)
+            ? "Sleep entry saved. This duration is flagged as very low."
+            : "Sleep entry saved.";
         model.Notes = "";
         await LoadEntriesAsync();
     }
@@ -432,5 +448,11 @@
     {
         var percent = (x / 640.0) * 100.0;
         return $"left: {percent.ToString("0.###", CultureInfo.InvariantCulture)}%;";
+    }
+
+    private static bool IsExcessivelyLowSleep(double hours)
+    {
+        // Anything below three full 90-minute cycles is highlighted for visibility.
+        return hours < 4.5;
     }
 }

@@ -1,0 +1,552 @@
+@page "/weight-goals"
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using HealthingHand.Data.Entries
+@using HealthingHand.Web.Services
+@using HealthingHand.Web.Services.WeightItems
+@using Microsoft.AspNetCore.Authorization
+@inject IWeightGoalService WeightGoalService
+@inject IWeightService WeightService
+@inject ICalorieRecommendationService CalorieRecommendationService
+
+@attribute [Authorize]
+
+<PageTitle>Weight</PageTitle>
+
+<div class="goal-shell">
+    <div class="goal-heading">
+        <div>
+            <h1>Weight</h1>
+            <p class="goal-muted">Log weight entries, review your trend, and see how your saved goal shapes your calorie target.</p>
+        </div>
+        <a class="goal-link" href="/user">Edit weight goal in user settings</a>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="alert alert-success" role="alert">@successMessage</div>
+    }
+
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-xl-5">
+            <div class="card goal-card h-100">
+                <div class="card-header">Log Weight</div>
+                <div class="card-body">
+                    <EditForm Model="weightModel" OnValidSubmit="SaveWeightAsync">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="goal-form-grid">
+                            <div>
+                                <label class="form-label">Date</label>
+                                <InputDate class="form-control" @bind-Value="weightModel.Date" />
+                            </div>
+
+                            <div>
+                                <label class="form-label">Weight (kg)</label>
+                                <InputNumber class="form-control" @bind-Value="weightModel.WeightKg" />
+                            </div>
+
+                            <div>
+                                <button type="submit" class="btn btn-primary w-100">Save Weight Entry</button>
+                            </div>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-7">
+            <div class="summary-stack">
+                <section class="summary-card">
+                    <div class="summary-top">
+                        <div>
+                            <h2>Goal Summary</h2>
+                            <p class="goal-muted mb-0">@goalSummary.RecommendedDirection</p>
+                        </div>
+                        <span class="summary-chip">@GetFriendlyGoalType(goalSummary.GoalType)</span>
+                    </div>
+
+                    <div class="summary-grid">
+                        <div class="metric-card">
+                            <span class="metric-label">Current</span>
+                            <strong>@goalSummary.CurrentWeightKg.ToString("0.##") kg</strong>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">Goal</span>
+                            <strong>@goalSummary.GoalWeightKg.ToString("0.##") kg</strong>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">Difference</span>
+                            <strong>@goalSummary.DifferenceKg.ToString("0.##") kg</strong>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">Pace</span>
+                            <strong>@goalSummary.PacePreference.ToString()</strong>
+                        </div>
+                    </div>
+
+                    <p class="goal-muted mt-3 mb-0">
+                        Activity setting: @GetFriendlyFrequency(goalSummary.ExerciseFrequency), @GetFriendlyIntensity(goalSummary.ExerciseIntensity) intensity.
+                    </p>
+                </section>
+
+                <section class="summary-card">
+                    <div class="summary-top">
+                        <div>
+                            <h2>Calorie Recommendation</h2>
+                            <p class="goal-muted mb-0">This view uses the same maintenance and target values as the dashboard nutrition card.</p>
+                        </div>
+                    </div>
+
+                    <div class="summary-grid">
+                        <div class="metric-card highlight-card">
+                            <span class="metric-label">Maintenance estimate</span>
+                            <strong>@calorieRecommendation.EstimatedMaintenanceCalories cal/day</strong>
+                        </div>
+                        <div class="metric-card highlight-card">
+                            <span class="metric-label">Recommended target</span>
+                            <strong>@calorieRecommendation.RecommendedDailyCalories cal/day</strong>
+                        </div>
+                    </div>
+
+                    <p class="reasoning-copy">@calorieRecommendation.ReasoningSummary</p>
+
+                    @if (!string.IsNullOrWhiteSpace(calorieRecommendation.Warning))
+                    {
+                        <div class="alert alert-warning mb-0" role="alert">@calorieRecommendation.Warning</div>
+                    }
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-12 col-xl-7">
+            <div class="card summary-card weight-chart-card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span>Weight Trend</span>
+                    <span class="goal-muted">Last 14 entries</span>
+                </div>
+                <div class="card-body">
+                    @if (chartPoints.Count == 0)
+                    {
+                        <p class="mb-0 goal-muted">Add weight entries to see your recent trend.</p>
+                    }
+                    else
+                    {
+                        <div class="chart-summary-row">
+                            <div>
+                                <div class="chart-stat">@latestWeightText</div>
+                                <div class="goal-muted small">latest logged weight</div>
+                            </div>
+                            <div>
+                                <div class="chart-stat">@weightRangeText</div>
+                                <div class="goal-muted small">range across the chart</div>
+                            </div>
+                        </div>
+
+                        <svg class="weight-chart" viewBox="0 0 640 260" role="img" aria-label="Weight trend over recent entries">
+                            <line x1="56" y1="220" x2="612" y2="220" class="chart-axis" />
+                            <line x1="56" y1="24" x2="56" y2="220" class="chart-axis" />
+                            <line x1="56" y1="24" x2="612" y2="24" class="chart-grid" />
+                            <line x1="56" y1="122" x2="612" y2="122" class="chart-grid" />
+                            <line x1="56" y1="220" x2="612" y2="220" class="chart-grid" />
+
+                            <polyline points="@chartLinePoints" class="chart-line" />
+
+                            @foreach (var point in chartPoints)
+                            {
+                                <circle cx="@point.X" cy="@point.Y" r="4" class="chart-dot" />
+                            }
+                        </svg>
+
+                        <div class="chart-footer-labels">
+                            <span>@chartPoints.First().Label</span>
+                            <span>@chartPoints[chartPoints.Count / 2].Label</span>
+                            <span>@chartPoints.Last().Label</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-5">
+            <div class="card summary-card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Recent Weight Entries</span>
+                    <span class="goal-muted">Last 30 days</span>
+                </div>
+                <div class="card-body p-0">
+                    @if (weightEntries.Count == 0)
+                    {
+                        <p class="p-3 mb-0 goal-muted">No weight entries yet.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-striped mb-0">
+                                <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Weight</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @foreach (var entry in weightEntries)
+                                {
+                                    <tr>
+                                        <td>@entry.Date.ToString("MMM dd, yyyy")</td>
+                                        <td>@entry.WeightKg.ToString("0.##") kg</td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .goal-shell {
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+    }
+
+    .goal-heading {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .goal-link {
+        color: #1f6feb;
+        text-decoration: none;
+        font-weight: 600;
+    }
+
+    .goal-muted {
+        color: #5f6b7a;
+    }
+
+    .goal-card,
+    .summary-card {
+        border: 1px solid #dbe3ec;
+        border-radius: 20px;
+        background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+        box-shadow: 0 18px 40px rgba(31, 111, 235, 0.08);
+    }
+
+    .goal-form-grid,
+    .summary-stack {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .summary-card {
+        padding: 1.25rem;
+    }
+
+    .summary-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: start;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .summary-chip {
+        padding: 0.4rem 0.75rem;
+        border-radius: 999px;
+        background: #eef5ff;
+        color: #1f6feb;
+        font-size: 0.85rem;
+        font-weight: 700;
+    }
+
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 0.85rem;
+    }
+
+    .metric-card {
+        border-radius: 16px;
+        padding: 1rem;
+        background: white;
+        border: 1px solid #dde7f2;
+        display: grid;
+        gap: 0.35rem;
+    }
+
+    .highlight-card {
+        background: #f4f9ff;
+    }
+
+    .metric-label {
+        color: #5f6b7a;
+        font-size: 0.85rem;
+    }
+
+    .reasoning-copy {
+        margin: 1rem 0 0 0;
+        color: #355070;
+    }
+
+    .weight-chart-card {
+        overflow: hidden;
+    }
+
+    .chart-summary-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .chart-stat {
+        font-size: 1.75rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .weight-chart {
+        width: 100%;
+        height: auto;
+        display: block;
+    }
+
+    .chart-axis {
+        stroke: #748094;
+        stroke-width: 1.5;
+    }
+
+    .chart-grid {
+        stroke: #d9e1ec;
+        stroke-width: 1;
+        stroke-dasharray: 4 4;
+    }
+
+    .chart-line {
+        fill: none;
+        stroke: #1f6feb;
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    .chart-dot {
+        fill: #1f6feb;
+        stroke: white;
+        stroke-width: 2;
+    }
+
+    .chart-footer-labels {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-top: 0.75rem;
+        color: #5f6b7a;
+        font-size: 0.85rem;
+    }
+</style>
+
+@code {
+    private sealed class WeightFormModel
+    {
+        [Required]
+        public DateTime Date { get; set; } = DateTime.Today;
+
+        [Range(typeof(float), "0.1", "1000")]
+        public float WeightKg { get; set; }
+    }
+
+    private sealed record WeightChartPoint(string Label, double WeightKg, double X, double Y);
+
+    private WeightFormModel weightModel = new();
+    private WeightGoalDto goalSummary = new();
+    private CalorieRecommendationDto calorieRecommendation = new();
+    private List<WeightListItem> weightEntries = [];
+    private List<WeightTrendPoint> weightTrend = [];
+    private List<WeightChartPoint> chartPoints = [];
+    private string chartLinePoints = "";
+    private string latestWeightText = "-";
+    private string weightRangeText = "-";
+    private string? successMessage;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPageAsync();
+    }
+
+    private async Task SaveWeightAsync()
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        var result = await WeightService.SaveAsync(new WeightEntryInput
+        {
+            Date = weightModel.Date,
+            WeightKg = weightModel.WeightKg
+        });
+
+        if (!result.Success)
+        {
+            errorMessage = result.Error;
+            return;
+        }
+
+        successMessage = "Weight entry saved.";
+        weightModel.WeightKg = 0;
+        await LoadPageAsync();
+    }
+
+    private async Task LoadPageAsync()
+    {
+        await LoadGoalAsync();
+        await LoadWeightAsync();
+        RecalculateCalories();
+    }
+
+    private async Task LoadGoalAsync()
+    {
+        goalSummary = await WeightGoalService.GetGoalAsync();
+
+        if (goalSummary.CurrentWeightKg <= 0)
+        {
+            var latestWeight = await WeightService.GetLatestWeightKgAsync();
+            goalSummary.CurrentWeightKg = latestWeight ?? 0;
+            goalSummary.GoalWeightKg = latestWeight ?? 0;
+        }
+    }
+
+    private async Task LoadWeightAsync()
+    {
+        var from = DateTime.Today.AddDays(-29);
+        var to = DateTime.Today;
+
+        weightEntries = (await WeightService.ListHistoryAsync(from, to)).ToList();
+        weightTrend = (await WeightService.GetTrendAsync(14)).ToList();
+
+        if (weightEntries.Count > 0)
+        {
+            goalSummary.CurrentWeightKg = weightEntries.First().WeightKg;
+            goalSummary.DifferenceKg = goalSummary.GoalWeightKg - goalSummary.CurrentWeightKg;
+            goalSummary.RecommendedDirection = goalSummary.GoalType switch
+            {
+                WeightGoalType.LoseWeight => $"Lose {Math.Abs(goalSummary.DifferenceKg):0.##} kg over time.",
+                WeightGoalType.GainWeight => $"Gain {Math.Abs(goalSummary.DifferenceKg):0.##} kg over time.",
+                _ => "Maintain your current weight."
+            };
+        }
+
+        BuildChart();
+    }
+
+    private void RecalculateCalories()
+    {
+        calorieRecommendation = CalorieRecommendationService.Calculate(new CalorieRecommendationInput
+        {
+            CurrentWeightKg = goalSummary.CurrentWeightKg,
+            GoalWeightKg = goalSummary.GoalWeightKg,
+            GoalType = goalSummary.GoalType,
+            PacePreference = goalSummary.PacePreference,
+            ExerciseFrequency = goalSummary.ExerciseFrequency,
+            ExerciseIntensity = goalSummary.ExerciseIntensity
+        });
+    }
+
+    private void BuildChart()
+    {
+        const double chartLeft = 56;
+        const double chartTop = 24;
+        const double chartWidth = 556;
+        const double chartHeight = 196;
+
+        if (weightTrend.Count == 0)
+        {
+            chartPoints = [];
+            chartLinePoints = "";
+            latestWeightText = "-";
+            weightRangeText = "-";
+            return;
+        }
+
+        var ordered = weightTrend.OrderBy(x => x.Date).ToList();
+        var minWeight = ordered.Min(x => (double)x.WeightKg);
+        var maxWeight = ordered.Max(x => (double)x.WeightKg);
+        var padding = Math.Max(1.0, (maxWeight - minWeight) * 0.2);
+        var chartMinWeight = Math.Max(0, minWeight - padding);
+        var chartMaxWeight = maxWeight + padding;
+
+        if (Math.Abs(chartMaxWeight - chartMinWeight) < 0.01)
+        {
+            chartMaxWeight = chartMinWeight + 2;
+        }
+
+        var xStep = ordered.Count == 1 ? 0 : chartWidth / (ordered.Count - 1);
+        chartPoints = ordered
+            .Select((point, index) =>
+            {
+                var x = chartLeft + (xStep * index);
+                var normalized = (point.WeightKg - chartMinWeight) / (chartMaxWeight - chartMinWeight);
+                var y = chartTop + chartHeight - (normalized * chartHeight);
+
+                return new WeightChartPoint(
+                    point.Date.ToString("MM/dd", CultureInfo.InvariantCulture),
+                    point.WeightKg,
+                    x,
+                    y);
+            })
+            .ToList();
+
+        chartLinePoints = string.Join(
+            " ",
+            chartPoints.Select(point =>
+                $"{point.X.ToString("0.##", CultureInfo.InvariantCulture)},{point.Y.ToString("0.##", CultureInfo.InvariantCulture)}"));
+
+        latestWeightText = $"{ordered.Last().WeightKg:0.##} kg";
+        weightRangeText = $"{minWeight:0.##} to {maxWeight:0.##} kg";
+    }
+
+    private static string GetFriendlyGoalType(WeightGoalType goalType)
+    {
+        return goalType switch
+        {
+            WeightGoalType.LoseWeight => "Lose Weight",
+            WeightGoalType.GainWeight => "Gain Weight",
+            _ => "Maintain Weight"
+        };
+    }
+
+    private static string GetFriendlyFrequency(ExerciseFrequency frequency)
+    {
+        return frequency switch
+        {
+            ExerciseFrequency.Sedentary => "Sedentary / little to no exercise",
+            ExerciseFrequency.Light => "Light (1-2 times per week)",
+            ExerciseFrequency.Moderate => "Moderate (3-4 times per week)",
+            ExerciseFrequency.Active => "Active (5+ times per week)",
+            _ => "Moderate"
+        };
+    }
+
+    private static string GetFriendlyIntensity(ExerciseIntensity intensity)
+    {
+        return intensity.ToString();
+    }
+}

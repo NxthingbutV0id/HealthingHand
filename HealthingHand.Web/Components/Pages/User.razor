@@ -2,20 +2,25 @@
 @attribute [Authorize]
 
 @using System.ComponentModel.DataAnnotations
-@using System.Globalization
 @using System.Security.Claims
+@using HealthingHand.Data.Entries
 @using HealthingHand.Web.Services
 @using HealthingHand.Web.Services.WeightItems
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.WebUtilities
 @inject NavigationManager Nav
+@inject IWeightGoalService WeightGoalService
 @inject IWeightService WeightService
 
 <PageTitle>User Settings</PageTitle>
 
 <h1>User Settings</h1>
-<p>Update your profile, log your weight, and review recent history.</p>
+<p>Update your profile and save your weight goal preferences.</p>
+
+<p class="mb-4">
+    <a class="btn btn-outline-primary btn-sm" href="/weight-goals">Open weight page</a>
+</p>
 
 @if (!string.IsNullOrWhiteSpace(SuccessMessage))
 {
@@ -32,14 +37,14 @@
     <div class="alert alert-danger">@DeleteErrorMessage</div>
 }
 
-@if (!string.IsNullOrWhiteSpace(weightErrorMessage))
+@if (!string.IsNullOrWhiteSpace(goalErrorMessage))
 {
-    <div class="alert alert-danger">@weightErrorMessage</div>
+    <div class="alert alert-danger">@goalErrorMessage</div>
 }
 
-@if (!string.IsNullOrWhiteSpace(weightSuccessMessage))
+@if (!string.IsNullOrWhiteSpace(goalSuccessMessage))
 {
-    <div class="alert alert-success">@weightSuccessMessage</div>
+    <div class="alert alert-success">@goalSuccessMessage</div>
 }
 
 <div class="row g-4 mb-4">
@@ -66,116 +71,65 @@
 
     <div class="col-12 col-xl-7">
         <div class="card h-100">
-            <div class="card-header">Log Weight</div>
+            <div class="card-header">Save Weight Goal</div>
             <div class="card-body">
-                <EditForm Model="weightModel" OnValidSubmit="SaveWeightAsync">
+                <EditForm Model="goalModel" OnValidSubmit="SaveGoalAsync">
                     <DataAnnotationsValidator />
                     <ValidationSummary />
 
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label">Date</label>
-                            <InputDate class="form-control" @bind-Value="weightModel.Date" />
+                            <label class="form-label">Current weight (kg)</label>
+                            <InputNumber class="form-control" @bind-Value="goalModel.CurrentWeightKg" />
                         </div>
 
                         <div class="col-md-6">
-                            <label class="form-label">Weight (kg)</label>
-                            <InputNumber class="form-control" @bind-Value="weightModel.WeightKg" />
+                            <label class="form-label">Goal weight (kg)</label>
+                            <InputNumber class="form-control" @bind-Value="goalModel.GoalWeightKg" />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Goal type</label>
+                            <InputSelect class="form-select" @bind-Value="goalModel.GoalType">
+                                <option value="@WeightGoalType.LoseWeight">Lose weight</option>
+                                <option value="@WeightGoalType.GainWeight">Gain weight</option>
+                                <option value="@WeightGoalType.MaintainWeight">Maintain weight</option>
+                            </InputSelect>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Target pace</label>
+                            <InputSelect class="form-select" @bind-Value="goalModel.PacePreference">
+                                <option value="@GoalPacePreference.Aggressive">Aggressive</option>
+                                <option value="@GoalPacePreference.Moderate">Moderate</option>
+                                <option value="@GoalPacePreference.Slow">Slow</option>
+                            </InputSelect>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Exercise frequency</label>
+                            <InputSelect class="form-select" @bind-Value="goalModel.ExerciseFrequency">
+                                <option value="@ExerciseFrequency.Sedentary">Sedentary / little to no exercise</option>
+                                <option value="@ExerciseFrequency.Light">Light (1-2 times per week)</option>
+                                <option value="@ExerciseFrequency.Moderate">Moderate (3-4 times per week)</option>
+                                <option value="@ExerciseFrequency.Active">Active (5+ times per week)</option>
+                            </InputSelect>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Exercise intensity</label>
+                            <InputSelect class="form-select" @bind-Value="goalModel.ExerciseIntensity">
+                                <option value="@ExerciseIntensity.Low">Low</option>
+                                <option value="@ExerciseIntensity.Medium">Medium</option>
+                                <option value="@ExerciseIntensity.High">High</option>
+                            </InputSelect>
                         </div>
 
                         <div class="col-12">
-                            <button type="submit" class="btn btn-primary">Save Weight</button>
+                            <button type="submit" class="btn btn-primary">Save Weight Goal</button>
                         </div>
                     </div>
                 </EditForm>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row g-4 mb-4">
-    <div class="col-12 col-xl-7">
-        <div class="card h-100 weight-chart-card">
-            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <span>Weight Trend</span>
-                <span class="text-muted">Last 14 entries</span>
-            </div>
-            <div class="card-body">
-                @if (chartPoints.Count == 0)
-                {
-                    <p class="mb-0 text-muted">Add weight entries to see your recent trend.</p>
-                }
-                else
-                {
-                    <div class="chart-summary-row">
-                        <div>
-                            <div class="chart-stat">@latestWeightText</div>
-                            <div class="text-muted small">latest logged weight</div>
-                        </div>
-                        <div>
-                            <div class="chart-stat">@weightRangeText</div>
-                            <div class="text-muted small">range across the chart</div>
-                        </div>
-                    </div>
-
-                    <svg class="weight-chart" viewBox="0 0 640 260" role="img" aria-label="Weight trend over recent entries">
-                        <line x1="56" y1="220" x2="612" y2="220" class="chart-axis" />
-                        <line x1="56" y1="24" x2="56" y2="220" class="chart-axis" />
-                        <line x1="56" y1="24" x2="612" y2="24" class="chart-grid" />
-                        <line x1="56" y1="122" x2="612" y2="122" class="chart-grid" />
-                        <line x1="56" y1="220" x2="612" y2="220" class="chart-grid" />
-
-                        <polyline points="@chartLinePoints" class="chart-line" />
-
-                        @foreach (var point in chartPoints)
-                        {
-                            <circle cx="@point.X" cy="@point.Y" r="4" class="chart-dot" />
-                        }
-                    </svg>
-
-                    <div class="chart-footer-labels">
-                        <span>@chartPoints.First().Label</span>
-                        <span>@chartPoints[chartPoints.Count / 2].Label</span>
-                        <span>@chartPoints.Last().Label</span>
-                    </div>
-                }
-            </div>
-        </div>
-    </div>
-
-    <div class="col-12 col-xl-5">
-        <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span>Recent Weight Entries</span>
-                <span class="text-muted">Last 30 days</span>
-            </div>
-            <div class="card-body p-0">
-                @if (weightEntries.Count == 0)
-                {
-                    <p class="p-3 mb-0 text-muted">No weight entries yet.</p>
-                }
-                else
-                {
-                    <div class="table-responsive">
-                        <table class="table table-striped mb-0">
-                            <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Weight</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            @foreach (var entry in weightEntries)
-                            {
-                                <tr>
-                                    <td>@entry.Date.ToString("MMM dd, yyyy")</td>
-                                    <td>@entry.WeightKg.ToString("0.##") kg</td>
-                                </tr>
-                            }
-                            </tbody>
-                        </table>
-                    </div>
-                }
             </div>
         </div>
     </div>
@@ -204,77 +158,20 @@
     </div>
 </div>
 
-<style>
-    .weight-chart-card {
-        overflow: hidden;
-    }
-
-    .chart-summary-row {
-        display: flex;
-        justify-content: space-between;
-        gap: 1rem;
-        margin-bottom: 1rem;
-        flex-wrap: wrap;
-    }
-
-    .chart-stat {
-        font-size: 1.75rem;
-        font-weight: 700;
-        line-height: 1;
-    }
-
-    .weight-chart {
-        width: 100%;
-        height: auto;
-        display: block;
-    }
-
-    .chart-axis {
-        stroke: #748094;
-        stroke-width: 1.5;
-    }
-
-    .chart-grid {
-        stroke: #d9e1ec;
-        stroke-width: 1;
-        stroke-dasharray: 4 4;
-    }
-
-    .chart-line {
-        fill: none;
-        stroke: #1f6feb;
-        stroke-width: 3;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-    }
-
-    .chart-dot {
-        fill: #1f6feb;
-        stroke: white;
-        stroke-width: 2;
-    }
-
-    .chart-footer-labels {
-        display: flex;
-        justify-content: space-between;
-        gap: 1rem;
-        margin-top: 0.75rem;
-        color: #5f6b7a;
-        font-size: 0.85rem;
-    }
-</style>
-
 @code {
-    private sealed class WeightFormModel
+    private sealed class WeightGoalFormModel
     {
-        [Required]
-        public DateTime Date { get; set; } = DateTime.Today;
+        [Range(typeof(float), "0.1", "1000")]
+        public float CurrentWeightKg { get; set; }
 
         [Range(typeof(float), "0.1", "1000")]
-        public float WeightKg { get; set; }
-    }
+        public float GoalWeightKg { get; set; }
 
-    private sealed record WeightChartPoint(string Label, double WeightKg, double X, double Y);
+        public WeightGoalType GoalType { get; set; } = WeightGoalType.MaintainWeight;
+        public GoalPacePreference PacePreference { get; set; } = GoalPacePreference.Moderate;
+        public ExerciseFrequency ExerciseFrequency { get; set; } = ExerciseFrequency.Moderate;
+        public ExerciseIntensity ExerciseIntensity { get; set; } = ExerciseIntensity.Medium;
+    }
 
     [CascadingParameter]
     private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
@@ -285,18 +182,10 @@
     private string? SuccessMessage;
     private string? ErrorMessage;
     private string? DeleteErrorMessage;
-    private string? weightSuccessMessage;
-    private string? weightErrorMessage;
+    private string? goalSuccessMessage;
+    private string? goalErrorMessage;
 
-    private WeightFormModel weightModel = new();
-    private List<WeightListItem> weightEntries = [];
-    private List<WeightTrendPoint> weightTrend = [];
-    private List<WeightChartPoint> chartPoints = [];
-    private string chartLinePoints = "";
-    private double chartMinWeight = 0;
-    private double chartMaxWeight = 0;
-    private string latestWeightText = "-";
-    private string weightRangeText = "-";
+    private WeightGoalFormModel goalModel = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -324,95 +213,44 @@
         if (query.TryGetValue("deleteError", out var deleteError))
             DeleteErrorMessage = Uri.UnescapeDataString(deleteError.ToString());
 
-        await LoadWeightAsync();
+        await LoadGoalAsync();
     }
 
-    private async Task SaveWeightAsync()
+    private async Task SaveGoalAsync()
     {
-        weightErrorMessage = null;
-        weightSuccessMessage = null;
+        goalErrorMessage = null;
+        goalSuccessMessage = null;
 
-        var result = await WeightService.SaveAsync(new WeightEntryInput
+        var result = await WeightGoalService.SaveGoalAsync(new WeightGoalInput
         {
-            Date = weightModel.Date,
-            WeightKg = weightModel.WeightKg
+            CurrentWeightKg = goalModel.CurrentWeightKg,
+            GoalWeightKg = goalModel.GoalWeightKg,
+            GoalType = goalModel.GoalType,
+            PacePreference = goalModel.PacePreference,
+            ExerciseFrequency = goalModel.ExerciseFrequency,
+            ExerciseIntensity = goalModel.ExerciseIntensity
         });
 
         if (!result.Success)
         {
-            weightErrorMessage = result.Error;
+            goalErrorMessage = result.Error;
             return;
         }
 
-        weightSuccessMessage = "Weight entry saved.";
-        weightModel.WeightKg = 0;
-        await LoadWeightAsync();
+        goalSuccessMessage = "Weight goal saved.";
+        await LoadGoalAsync();
     }
 
-    private async Task LoadWeightAsync()
+    private async Task LoadGoalAsync()
     {
-        var from = DateTime.Today.AddDays(-29);
-        var to = DateTime.Today;
+        var goal = await WeightGoalService.GetGoalAsync();
+        var latestWeight = await WeightService.GetLatestWeightKgAsync();
 
-        weightEntries = (await WeightService.ListHistoryAsync(from, to)).ToList();
-        weightTrend = (await WeightService.GetTrendAsync(14)).ToList();
-
-        BuildChart();
-    }
-
-    private void BuildChart()
-    {
-        const double chartLeft = 56;
-        const double chartTop = 24;
-        const double chartWidth = 556;
-        const double chartHeight = 196;
-
-        if (weightTrend.Count == 0)
-        {
-            chartPoints = [];
-            chartLinePoints = "";
-            latestWeightText = "-";
-            weightRangeText = "-";
-            chartMinWeight = 0;
-            chartMaxWeight = 0;
-            return;
-        }
-
-        var ordered = weightTrend.OrderBy(x => x.Date).ToList();
-        var minWeight = ordered.Min(x => (double)x.WeightKg);
-        var maxWeight = ordered.Max(x => (double)x.WeightKg);
-        var padding = Math.Max(1.0, (maxWeight - minWeight) * 0.2);
-
-        chartMinWeight = Math.Max(0, minWeight - padding);
-        chartMaxWeight = maxWeight + padding;
-
-        if (Math.Abs(chartMaxWeight - chartMinWeight) < 0.01)
-        {
-            chartMaxWeight = chartMinWeight + 2;
-        }
-
-        var xStep = ordered.Count == 1 ? 0 : chartWidth / (ordered.Count - 1);
-        chartPoints = ordered
-            .Select((point, index) =>
-            {
-                var x = chartLeft + (xStep * index);
-                var normalized = (point.WeightKg - chartMinWeight) / (chartMaxWeight - chartMinWeight);
-                var y = chartTop + chartHeight - (normalized * chartHeight);
-
-                return new WeightChartPoint(
-                    point.Date.ToString("MM/dd", CultureInfo.InvariantCulture),
-                    point.WeightKg,
-                    x,
-                    y);
-            })
-            .ToList();
-
-        chartLinePoints = string.Join(
-            " ",
-            chartPoints.Select(point =>
-                $"{point.X.ToString("0.##", CultureInfo.InvariantCulture)},{point.Y.ToString("0.##", CultureInfo.InvariantCulture)}"));
-
-        latestWeightText = $"{ordered.Last().WeightKg:0.##} kg";
-        weightRangeText = $"{minWeight:0.##} to {maxWeight:0.##} kg";
+        goalModel.CurrentWeightKg = goal.CurrentWeightKg > 0 ? goal.CurrentWeightKg : latestWeight ?? 0;
+        goalModel.GoalWeightKg = goal.GoalWeightKg > 0 ? goal.GoalWeightKg : latestWeight ?? 0;
+        goalModel.GoalType = goal.GoalType;
+        goalModel.PacePreference = goal.PacePreference;
+        goalModel.ExerciseFrequency = goal.ExerciseFrequency;
+        goalModel.ExerciseIntensity = goal.ExerciseIntensity;
     }
 }
