@@ -1,6 +1,6 @@
 namespace HealthingHand.Web.Services.OcrItems;
 
-public class UploadValidator
+public static class UploadValidator
 {
     private static readonly HashSet<string> SupportedContentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
