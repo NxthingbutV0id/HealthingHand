@@ -2,7 +2,7 @@ using HealthingHand.Web.Services.DietItems;
 
 namespace HealthingHand.Web.Services.OcrItems;
 
-public sealed class NutritionLabelParsedResult
+public sealed class ParsedResult
 {
     public string Name { get; set; } = "Scanned item";
     public string RawText { get; set; } = "";

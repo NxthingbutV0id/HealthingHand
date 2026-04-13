@@ -1288,7 +1288,7 @@ public sealed class UnitTest1 : IDisposable
                 AverageHeartRate = 135,
                 WorkoutType = WorkoutType.Cardio,
                 Notes = "Older workout",
-                Exercises = new List<ExerciseEntry> { olderExercise }
+                Exercises = [olderExercise]
             },
             new WorkoutEntry
             {
@@ -1299,7 +1299,7 @@ public sealed class UnitTest1 : IDisposable
                 AverageHeartRate = 150,
                 WorkoutType = WorkoutType.Cardio,
                 Notes = "Newest workout",
-                Exercises = new List<ExerciseEntry> { newerExercise }
+                Exercises = [newerExercise]
             },
             new WorkoutEntry
             {
@@ -1310,10 +1310,7 @@ public sealed class UnitTest1 : IDisposable
                 AverageHeartRate = 160,
                 WorkoutType = WorkoutType.Cardio,
                 Notes = "Other user workout",
-                Exercises = new List<ExerciseEntry>
-                {
-                    MakeExerciseEntry("Other", 0, 0, 0, 2, 15)
-                }
+                Exercises = [MakeExerciseEntry("Other", 0, 0, 0, 2, 15)]
             });
 
         await db.SaveChangesAsync();
@@ -1360,7 +1357,7 @@ public sealed class UnitTest1 : IDisposable
             AverageHeartRate = 148,
             WorkoutType = WorkoutType.Cardio,
             Notes = "Detail workout",
-            Exercises = new List<ExerciseEntry> { exercise1, exercise2 }
+            Exercises = [exercise1, exercise2]
         };
 
         db.WorkoutEntries.Add(workout);
@@ -1411,7 +1408,7 @@ public sealed class UnitTest1 : IDisposable
             AverageHeartRate = 120,
             WorkoutType = WorkoutType.StrengthTraining,
             Notes = "Original",
-            Exercises = new List<ExerciseEntry> { originalExercise }
+            Exercises = [originalExercise]
         };
 
         db.WorkoutEntries.Add(workout);
@@ -1477,7 +1474,7 @@ public sealed class UnitTest1 : IDisposable
             AverageHeartRate = 125,
             WorkoutType = WorkoutType.StrengthTraining,
             Notes = "Original",
-            Exercises = new List<ExerciseEntry> { originalExercise }
+            Exercises = [originalExercise]
         };
 
         db.WorkoutEntries.Add(workout);
@@ -1527,10 +1524,7 @@ public sealed class UnitTest1 : IDisposable
             AverageHeartRate = 118,
             WorkoutType = WorkoutType.Cardio,
             Notes = "Delete me",
-            Exercises = new List<ExerciseEntry>
-            {
-                MakeExerciseEntry("Walk", 0, 0, 0, 2, 30)
-            }
+            Exercises = [MakeExerciseEntry("Walk", 0, 0, 0, 2, 30)]
         };
 
         db.WorkoutEntries.Add(workout);
@@ -1552,7 +1546,7 @@ public sealed class UnitTest1 : IDisposable
     [Fact]
     public void Parse_StandardNutritionLabel_ExtractsExpectedFields()
     {
-        var parser = new NutritionLabelParser();
+        var parser = new Parser();
 
         const string text = """
                             Nutrition Facts
@@ -1572,7 +1566,7 @@ public sealed class UnitTest1 : IDisposable
         Assert.Equal(8f, result.FatGrams);
         Assert.Equal(37f, result.CarbsGrams);
         Assert.Equal(3f, result.ProteinGrams);
-        Assert.Equal(8f, result.ServingsPerContainer); //TODO: This test fails (Expected 8, Got null)
+        Assert.Equal(8f, result.ServingsPerContainer);
         Assert.Equal(2f / 3f, result.ServingSizeAmount!.Value, 3);
         Assert.Equal("cup", result.ServingSizeUnit);
         Assert.Equal(55f, result.MetricServingAmount);
@@ -1582,7 +1576,7 @@ public sealed class UnitTest1 : IDisposable
     [Fact]
     public void Parse_OcrStyleTextWithDifferentSpacing_StillExtractsFields()
     {
-        var parser = new NutritionLabelParser();
+        var parser = new Parser();
 
         const string text = """
                             NUTRITION FACTS
@@ -1611,7 +1605,7 @@ public sealed class UnitTest1 : IDisposable
     [Fact]
     public void Parse_MissingFields_AddsWarningsInsteadOfThrowing()
     {
-        var parser = new NutritionLabelParser();
+        var parser = new Parser();
 
         const string text = """
                             Nutrition Facts
@@ -1634,7 +1628,7 @@ public sealed class UnitTest1 : IDisposable
     [Fact]
     public void ToDietMealItemInput_DefaultsToOneServing()
     {
-        var parsed = new NutritionLabelParsedResult
+        var parsed = new ParsedResult
         {
             Name = "Crackers",
             Calories = 160,

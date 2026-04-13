@@ -3,18 +3,18 @@ using System.Text.RegularExpressions;
 
 namespace HealthingHand.Web.Services.OcrItems;
 
-public interface INutritionLabelParser
+public interface IParser
 {
-    NutritionLabelParsedResult Parse(string rawText, string? suggestedName = null);
+    ParsedResult Parse(string rawText, string? suggestedName = null);
 }
 
-public sealed partial class NutritionLabelParser : INutritionLabelParser
+public sealed partial class Parser : IParser
 {
-    public NutritionLabelParsedResult Parse(string rawText, string? suggestedName = null)
+    public ParsedResult Parse(string rawText, string? suggestedName = null)
     {
         var normalizedText = Normalize(rawText);
 
-        var result = new NutritionLabelParsedResult
+        var result = new ParsedResult
         {
             Name = string.IsNullOrWhiteSpace(suggestedName) ? "Scanned item" : suggestedName.Trim(),
             RawText = rawText,
@@ -23,7 +23,7 @@ public sealed partial class NutritionLabelParser : INutritionLabelParser
             ProteinGrams = ExtractFloat(ProteinRegex(), normalizedText, "value"),
             CarbsGrams = ExtractFloatEither(CarbsRegex(), normalizedText, "value", "value2"),
             FatGrams = ExtractFloat(FatRegex(), normalizedText, "value"),
-            ServingsPerContainer = ExtractFloat(ServingsPerContainerRegex(), normalizedText, "value")
+            ServingsPerContainer = ExtractFloatEither(ServingsPerContainerRegex(), normalizedText, "value1", "value2")
         };
 
         var servingSizeText = ExtractString(ServingSizeRegex(), normalizedText, "value");
@@ -78,7 +78,7 @@ public sealed partial class NutritionLabelParser : INutritionLabelParser
         return normalized;
     }
 
-    private static void ParseServingSize(string servingSizeText, NutritionLabelParsedResult result)
+    private static void ParseServingSize(string servingSizeText, ParsedResult result)
     {
         var leadingMatch = LeadingAmountUnitRegex().Match(servingSizeText);
         if (leadingMatch.Success)
@@ -99,7 +99,7 @@ public sealed partial class NutritionLabelParser : INutritionLabelParser
         result.ServingSizeUnit = result.MetricServingUnit;
     }
 
-    private static void AddWarnings(NutritionLabelParsedResult result)
+    private static void AddWarnings(ParsedResult result)
     {
         if (result.Calories is null) result.Warnings.Add("Calories could not be detected.");
         if (result.ProteinGrams is null) result.Warnings.Add("Protein could not be detected.");
@@ -196,7 +196,7 @@ public sealed partial class NutritionLabelParser : INutritionLabelParser
     private static partial Regex CarbsRegex();
     [GeneratedRegex(@"(?im)\b(?:total\s+)?fat\b\s*[:\-]?\s*(?<value>\d+(?:\.\d+)?)\s*g\b", RegexOptions.Compiled, "en-US")]
     private static partial Regex FatRegex();
-    [GeneratedRegex(@"(?im)\bservings?\s+per\s+container\b\s*[:\-]?\s*(?:about\s+)?(?<value>\d+(?:\.\d+)?)\b", RegexOptions.Compiled, "en-US")]
+    [GeneratedRegex(@"(?im)^\s*(?:(?<value1>\d+(?:\.\d+)?)\s+servings?\s+per\s+container\b|servings?\s+per\s+container\b\s*[:\-]?\s*(?:about\s+)?(?<value2>\d+(?:\.\d+)?))", RegexOptions.Compiled, "en-US")]
     private static partial Regex ServingsPerContainerRegex();
     [GeneratedRegex(@"(?im)^\s*serving\s+size\b\s*[:\-]?\s*(?<value>.+?)\s*$", RegexOptions.Compiled, "en-US")]
     private static partial Regex ServingSizeRegex();

@@ -1,8 +1,8 @@
 namespace HealthingHand.Web.Services.OcrItems;
 
-public sealed class NutritionLabelScanResult
+public sealed class ScanResult
 {
     public string RawText { get; set; } = "";
     public float Confidence { get; set; }
-    public NutritionLabelParsedResult Parsed { get; set; } = new();
+    public ParsedResult Parsed { get; set; } = new();
 }

@@ -11,6 +11,7 @@
 
 @inject IDietService DietService
 @inject NavigationManager Navigation
+@inject IOcrService OcrService
 
 <PageTitle>Diet</PageTitle>
 
@@ -64,6 +65,55 @@ else
                         <h3>Add Meal</h3>
                         <p class="diet-muted">Create a meal entry and add one or more food items.</p>
                     </div>
+                </div>
+                
+                <div class="ocr-panel">
+                    <div class="section-header">
+                        <div>
+                            <h4>Nutrition Label OCR</h4>
+                            <p class="diet-muted">Upload a PNG or JPEG image and extract raw OCR text.</p>
+                        </div>
+                    </div>
+
+                    <InputFile OnChange="HandleNutritionLabelSelected"
+                               accept=".png,.jpg,.jpeg,image/png,image/jpeg" />
+
+                    @if (isOcrScanning)
+                    {
+                        <p class="diet-muted ocr-status">Scanning image...</p>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(ocrErrorMessage))
+                    {
+                        <div class="diet-alert error ocr-alert">@ocrErrorMessage</div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(ocrSuccessMessage))
+                    {
+                        <div class="diet-alert success ocr-alert">@ocrSuccessMessage</div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(ocrRawText))
+                    {
+                        <div class="ocr-result">
+                            <div class="ocr-result-top">
+                                <strong>Raw OCR Text</strong>
+
+                                @if (ocrConfidence is not null)
+                                {
+                                    <span class="diet-muted">Confidence: @($"{ocrConfidence:P0}")</span>
+                                }
+                            </div>
+
+                            <textarea class="diet-input diet-textarea ocr-textarea" readonly>@ocrRawText</textarea>
+
+                            <div class="card-actions">
+                                <button type="button" class="diet-btn" @onclick="ClearOcrResult">
+                                    Clear OCR Result
+                                </button>
+                            </div>
+                        </div>
+                    }
                 </div>
 
                 <EditForm Model="meal" OnSubmit="HandleSubmitAsync">
@@ -429,11 +479,54 @@ else
             grid-template-columns: 1fr;
         }
     }
+
+    .ocr-panel {
+        border: 1px dashed #cfcfcf;
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 1.25rem;
+        background: #fcfcfc;
+    }
+
+    .ocr-status {
+        margin-top: 0.75rem;
+    }
+
+    .ocr-alert {
+        margin-top: 0.75rem;
+    }
+
+    .ocr-result {
+        margin-top: 1rem;
+    }
+
+    .ocr-result-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 0.5rem;
+    }
+
+    .ocr-textarea {
+        min-height: 220px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        white-space: pre-wrap;
+    }
 </style>
 
 @code {
     [SupplyParameterFromQuery]
     public string? ReturnUrl { get; set; }
+    
+    private const long OcrMaxUploadBytes = 5 * 1024 * 1024;
+
+    private bool isOcrScanning;
+    private string? ocrErrorMessage;
+    private string? ocrSuccessMessage;
+    private string ocrRawText = "";
+    private float? ocrConfidence;
 
     private bool isLoading = true;
     private bool isSaving;
@@ -558,12 +651,61 @@ else
         errorMessage = null;
         successMessage = null;
         meal = CreateEmptyMeal();
+        ClearOcrResult();
     }
 
     private bool IsAddRoute()
     {
         var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
         return relative.StartsWith("diet/add", StringComparison.OrdinalIgnoreCase);
+    }
+    
+    private async Task HandleNutritionLabelSelected(InputFileChangeEventArgs e)
+    {
+        ocrErrorMessage = null;
+        ocrSuccessMessage = null;
+        ocrRawText = "";
+        ocrConfidence = null;
+        isOcrScanning = true;
+
+        try
+        {
+            var file = e.File;
+
+            await using var stream = file.OpenReadStream(OcrMaxUploadBytes);
+
+            var result = await OcrService.ScanAsync(
+                stream,
+                suggestedName: Path.GetFileNameWithoutExtension(file.Name),
+                fileName: file.Name,
+                contentType: file.ContentType);
+
+            if (!result.Success || result.Result is null)
+            {
+                ocrErrorMessage = result.Error ?? "OCR failed.";
+                return;
+            }
+
+            ocrRawText = result.Result.RawText;
+            ocrConfidence = result.Result.Confidence;
+            ocrSuccessMessage = $"OCR text extracted successfully from {file.Name}.";
+        }
+        catch (Exception ex)
+        {
+            ocrErrorMessage = $"Upload failed: {ex.Message}";
+        }
+        finally
+        {
+            isOcrScanning = false;
+        }
+    }
+
+    private void ClearOcrResult()
+    {
+        ocrErrorMessage = null;
+        ocrSuccessMessage = null;
+        ocrRawText = "";
+        ocrConfidence = null;
     }
 
     private static DietMealInput CreateEmptyMeal()
