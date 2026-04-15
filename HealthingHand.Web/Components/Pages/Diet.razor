@@ -3,6 +3,7 @@
 
 @using HealthingHand.Web.Services
 @using HealthingHand.Web.Services.DietItems
+@using HealthingHand.Web.Services.OcrItems
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Forms
@@ -95,6 +96,9 @@ else
 
                     @if (!string.IsNullOrWhiteSpace(ocrRawText))
                     {
+                        <p class="diet-muted">
+                            Review the editable meal fields below before saving. If OCR missed anything, you can fix it manually.
+                        </p>
                         <div class="ocr-result">
                             <div class="ocr-result-top">
                                 <strong>Raw OCR Text</strong>
@@ -521,7 +525,8 @@ else
     public string? ReturnUrl { get; set; }
     
     private const long OcrMaxUploadBytes = 5 * 1024 * 1024;
-
+    private const float Tolerance = 0.001f;
+    
     private bool isOcrScanning;
     private string? ocrErrorMessage;
     private string? ocrSuccessMessage;
@@ -662,6 +667,8 @@ else
     
     private async Task HandleNutritionLabelSelected(InputFileChangeEventArgs e)
     {
+        IBrowserFile? file = null;
+
         ocrErrorMessage = null;
         ocrSuccessMessage = null;
         ocrRawText = "";
@@ -670,7 +677,15 @@ else
 
         try
         {
-            var file = e.File;
+            file = e.File;
+
+            if (file.Size > OcrMaxUploadBytes)
+            {
+                ocrErrorMessage =
+                    $"File is too large before OCR starts. Browser-reported size: {file.Size / 1024.0:F1} KB. " +
+                    $"Current limit: {OcrMaxUploadBytes / 1024.0:F1} KB.";
+                return;
+            }
 
             await using var stream = file.OpenReadStream(OcrMaxUploadBytes);
 
@@ -682,13 +697,27 @@ else
 
             if (!result.Success || result.Result is null)
             {
-                ocrErrorMessage = result.Error ?? "OCR failed.";
+                ocrErrorMessage =
+                    $"OCR service failed for {file.Name} ({file.Size / 1024.0:F1} KB): " +
+                    $"{result.Error ?? "OCR failed."}";
                 return;
             }
 
             ocrRawText = result.Result.RawText;
             ocrConfidence = result.Result.Confidence;
-            ocrSuccessMessage = $"OCR text extracted successfully from {file.Name}.";
+            ApplyOcrResultToMeal(result.Result.Parsed);
+
+            if (result.Result.Parsed.Warnings.Count > 0)
+            {
+                ocrErrorMessage =
+                    "OCR found text, but some nutrition values may be missing. Review and correct the meal fields below.";
+            }
+        }
+        catch (IOException ex)
+        {
+            ocrErrorMessage =
+                $"Upload stream failed for {file?.Name ?? "file"} " +
+                $"({(file is null ? 0 : file.Size / 1024.0):F1} KB). {ex.Message}";
         }
         catch (Exception ex)
         {
@@ -706,6 +735,35 @@ else
         ocrSuccessMessage = null;
         ocrRawText = "";
         ocrConfidence = null;
+    }
+    
+    private void ApplyOcrResultToMeal(ParsedResult parsed) 
+    {
+        var item = parsed.ToDietMealItemInput();
+
+        meal.MealType = string.IsNullOrWhiteSpace(meal.MealType) || meal.MealType == "Meal"
+            ? "Scanned Meal"
+            : meal.MealType;
+
+        if (meal.Items.Count == 1 &&
+            string.IsNullOrWhiteSpace(meal.Items[0].Name) &&
+            Math.Abs(meal.Items[0].Quantity - 1) < Tolerance &&
+            meal.Items[0].Unit == "serving" &&
+            meal.Items[0].CaloriesPerUnit == 0 &&
+            meal.Items[0].ProteinGrams == 0 &&
+            meal.Items[0].CarbsGrams == 0 &&
+            meal.Items[0].FatGrams == 0)
+        {
+            meal.Items[0] = item;
+        }
+        else
+        {
+            meal.Items.Add(item);
+        }
+
+        ocrSuccessMessage = parsed.Warnings.Count > 0 ? 
+            "OCR text extracted. Review the fields below and fix any missing values before saving." : 
+            "OCR text extracted and meal form populated. Review the values below before saving.";
     }
 
     private static DietMealInput CreateEmptyMeal()

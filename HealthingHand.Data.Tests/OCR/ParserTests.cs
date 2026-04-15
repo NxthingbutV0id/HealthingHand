@@ -108,4 +108,46 @@ public class ParserTests
         Assert.Equal(22f, item.CarbsGrams);
         Assert.Equal(7f, item.FatGrams);
     }
+    
+    [Fact]
+    public void Parse_TwoColumnNutritionLabel_OcrText_ExtractsPerServingValues()
+    {
+        var parser = new Parser();
+
+        const string text = """
+                            Nutrition Facts
+
+                            3 servings per container
+                            Serving size
+
+                            3 pretzels (28g)
+
+                            calories 110/ 330
+                            Total Fat 0.5g 1% 159 3%
+                            Saturated Fat 0g 0% | 0g 0%
+                            Trans Fat 0g 0g
+                            Cholesterol Omg 0% | Omg 0%
+                            Sodium 400mg 17%|1200mg 52%
+                            Total Carb. 23g 8% |69g 24%
+                            Dietary Fiber 2g 7% |6g 21%
+                            Total Sugars <1g 3g
+                            Incl. Added Sugars | Og 0% | 0g 0%
+                            Protein 3g 9g
+                            """;
+
+        var result = parser.Parse(text, "Pretzels");
+
+        Assert.Equal("Pretzels", result.Name);
+        Assert.Equal(3f, result.ServingsPerContainer);
+        Assert.Equal("3 pretzels (28g)", result.ServingSizeText);
+        Assert.Equal(3f, result.ServingSizeAmount);
+        Assert.Equal("pretzels", result.ServingSizeUnit);
+        Assert.Equal(28f, result.MetricServingAmount);
+        Assert.Equal("g", result.MetricServingUnit);
+
+        Assert.Equal(110, result.Calories);
+        Assert.Equal(0.5f, result.FatGrams);
+        Assert.Equal(23f, result.CarbsGrams);
+        Assert.Equal(3f, result.ProteinGrams);
+    }
 }

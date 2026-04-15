@@ -28,15 +28,20 @@ public sealed class OcrService(IWebHostEnvironment env, IParser parser) : IOcrSe
         await using var memory = new MemoryStream();
         await imageStream.CopyToAsync(memory);
 
-        if (memory.Length < MaxUploadBytes)
-            return (false, "Image is too large. Please upload an image smaller than 5 MB.", null);
+        switch (memory.Length)
+        {
+            case > MaxUploadBytes: return (false, $"Image is too large. Please upload an image smaller than 5 MB. (Image Size: {memory.Length} bytes)", null);
+            case 0: return (false, "Uploaded image was empty.", null);
+        }
 
-        if (memory.Length == 0)
-            return (false, "Uploaded image was empty.", null);
+        var tessdataPath = Path.Combine(AppContext.BaseDirectory, "tessdata");
+        var engDataPath = Path.Combine(tessdataPath, "eng.traineddata");
 
-        var tessdataPath = Path.Combine(env.ContentRootPath, "tessdata");
         if (!Directory.Exists(tessdataPath))
-            return (false, $"tessdata folder not found at '{tessdataPath}'.", null);
+            return (false, $"OCR setup error: tessdata folder not found at '{tessdataPath}'.", null);
+
+        if (!File.Exists(engDataPath))
+            return (false, $"OCR setup error: eng.traineddata not found at '{engDataPath}'.", null);
 
         try
         {

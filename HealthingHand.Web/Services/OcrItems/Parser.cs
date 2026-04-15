@@ -21,7 +21,7 @@ public sealed partial class Parser : IParser
             NormalizedText = normalizedText,
             Calories = ExtractInt(CaloriesRegex(), normalizedText, "value"),
             ProteinGrams = ExtractFloat(ProteinRegex(), normalizedText, "value"),
-            CarbsGrams = ExtractFloatEither(CarbsRegex(), normalizedText, "value", "value2"),
+            CarbsGrams = ExtractFloat(CarbsRegex(), normalizedText, "value"),
             FatGrams = ExtractFloat(FatRegex(), normalizedText, "value"),
             ServingsPerContainer = ExtractFloatEither(ServingsPerContainerRegex(), normalizedText, "value1", "value2")
         };
@@ -52,6 +52,9 @@ public sealed partial class Parser : IParser
             .Replace('—', '-')
             .Replace('–', '-');
 
+        text = ServingSizeNormalizeRegex().Replace(text, "$1 $2");
+        text = ServingsPerContainerNormalizeRegex().Replace(text, "$1 $2");
+
         var lines = text
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(NormalizeLine)
@@ -64,14 +67,18 @@ public sealed partial class Parser : IParser
     {
         var normalized = line.ToLowerInvariant();
 
-        // Clean out common errors during scan (i -> l)
         normalized = normalized
             .Replace("calorles", "calories")
             .Replace("proteln", "protein")
             .Replace("protem", "protein")
             .Replace("carbohydrale", "carbohydrate")
             .Replace("servlng", "serving")
-            .Replace("contalner", "container");
+            .Replace("contalner", "container")
+            .Replace("total carb.", "total carb.")
+            .Replace("0mg", "0mg")
+            .Replace("omg", "0mg")
+            .Replace("omcg", "0mcg")
+            .Replace("omeg", "0mcg");
 
         normalized = NormalizedRegex().Replace(normalized, " ").Trim();
 
@@ -192,13 +199,13 @@ public sealed partial class Parser : IParser
     private static partial Regex CaloriesRegex();
     [GeneratedRegex(@"(?im)\bprotein\b\s*[:\-]?\s*(?<value>\d+(?:\.\d+)?)\s*g\b", RegexOptions.Compiled, "en-US")]
     private static partial Regex ProteinRegex();
-    [GeneratedRegex(@"(?im)\b(?:total\s+)?carbohydrates?\b\s*[:\-]?\s*(?<value>\d+(?:\.\d+)?)\s*g\b|\b(?:total\s+)?carbs?\b\s*[:\-]?\s*(?<value2>\d+(?:\.\d+)?)\s*g\b", RegexOptions.Compiled, "en-US")]
+    [GeneratedRegex(@"(?im)\b(?:total\s+)?(?:carbohydrates?|carbs?|carb\.?)\b[\s:\-\.]*(?<value>\d+(?:\.\d+)?)\s*g\b", RegexOptions.Compiled, "en-US")]
     private static partial Regex CarbsRegex();
     [GeneratedRegex(@"(?im)\b(?:total\s+)?fat\b\s*[:\-]?\s*(?<value>\d+(?:\.\d+)?)\s*g\b", RegexOptions.Compiled, "en-US")]
     private static partial Regex FatRegex();
     [GeneratedRegex(@"(?im)^\s*(?:(?<value1>\d+(?:\.\d+)?)\s+servings?\s+per\s+container\b|servings?\s+per\s+container\b\s*[:\-]?\s*(?:about\s+)?(?<value2>\d+(?:\.\d+)?))", RegexOptions.Compiled, "en-US")]
     private static partial Regex ServingsPerContainerRegex();
-    [GeneratedRegex(@"(?im)^\s*serving\s+size\b\s*[:\-]?\s*(?<value>.+?)\s*$", RegexOptions.Compiled, "en-US")]
+    [GeneratedRegex(@"(?im)\bserving\s+size\b\s*[:\-]?\s*(?<value>[^\n]+)", RegexOptions.Compiled, "en-US")]
     private static partial Regex ServingSizeRegex();
     [GeneratedRegex(@"^\s*(?<amount>\d+\s+\d+/\d+|\d+/\d+|\d+(?:\.\d+)?)\s*(?<unit>[a-zA-Z]+(?:\s+[a-zA-Z]+)?)?", RegexOptions.Compiled)]
     private static partial Regex LeadingAmountUnitRegex();
@@ -206,4 +213,8 @@ public sealed partial class Parser : IParser
     private static partial Regex ParentheticalMetricRegex();
     [GeneratedRegex(@"[ \t]+")]
     private static partial Regex NormalizedRegex();
+    [GeneratedRegex(@"(?im)(serving\s+size)\s*\n+\s*([^\n]+)", RegexOptions.None, "en-US")]
+    private static partial Regex ServingSizeNormalizeRegex();
+    [GeneratedRegex(@"(?im)(servings?\s+per\s+container)\s*\n+\s*([^\n]+)", RegexOptions.None, "en-US")]
+    private static partial Regex ServingsPerContainerNormalizeRegex();
 }

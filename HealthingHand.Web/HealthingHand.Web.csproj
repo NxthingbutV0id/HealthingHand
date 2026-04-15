@@ -7,7 +7,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\HealthingHand.Data\HealthingHand.Data.csproj" />
+        <ProjectReference Include="..\HealthingHand.Data\HealthingHand.Data.csproj" />
     </ItemGroup>
 
     <ItemGroup>
@@ -19,13 +19,15 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Update="tessdata\**\*">
+        <None Update="tessdata/**/*">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
     </ItemGroup>
 
-    <Target Name="link_deps" AfterTargets="AfterBuild">
-        <Exec Command="ln -sf /opt/homebrew/lib/libleptonica.dylib $(OutDir)x64/libleptonica-1.82.0.dylib" />
-        <Exec Command="ln -sf /opt/homebrew/lib/libtesseract.dylib $(OutDir)x64/libtesseract50.dylib" />
+    <Target Name="link_deps" AfterTargets="Build">
+        <MakeDir Directories="$(TargetDir)x64" />
+        <Exec Command='ln -sf /opt/homebrew/lib/libleptonica.dylib "$(TargetDir)x64/libleptonica-1.82.0.dylib"' />
+        <Exec Command='ln -sf /opt/homebrew/lib/libtesseract.dylib "$(TargetDir)x64/libtesseract50.dylib"' />
     </Target>
+
 </Project>
