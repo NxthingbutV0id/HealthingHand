@@ -3,6 +3,7 @@ using HealthingHand.Data.Entries;
 using HealthingHand.Data.Persistence;
 using HealthingHand.Data.Stores;
 using HealthingHand.Web.Services.DietItems;
+using HealthingHand.Web.Services.WeightItems;
 using Microsoft.EntityFrameworkCore;
 
 namespace HealthingHand.Web.Services;
@@ -17,8 +18,9 @@ public interface IDietService
 
 public class DietService(
     IDietStore diets,
-    IAccountStore accounts,
+    IWeightGoalStore weightGoals,
     IDbContextFactory<AppDbContext> dbFactory,
+    ICalorieRecommendationService calorieRecommendationService,
     IHttpContextAccessor httpContextAccessor) : IDietService
 {
     public async Task<(bool Success, string? Error, int? MealId)> CreateMealAsync(DietMealInput input)
@@ -94,8 +96,6 @@ public class DietService(
         }
 
         var meals = await diets.ListForUserAsync(userId.Value, from, to, includeItems: true);
-        var user = await accounts.GetAsync(userId.Value);
-
         float? latestWeightKg;
 
         await using (var db = await dbFactory.CreateDbContextAsync())
@@ -114,7 +114,9 @@ public class DietService(
         var totalCarbs = meals.Sum(m => m.Items.Sum(i => i.CarbsGrams));
         var totalFat = meals.Sum(m => m.Items.Sum(i => i.FatGrams));
 
-        var target = CalculateDailyCalorieTarget(user, latestWeightKg);
+        var weightGoal = await weightGoals.GetForUserAsync(userId.Value);
+        var calorieRecommendation = BuildCalorieRecommendation(weightGoal, latestWeightKg);
+        var target = calorieRecommendation?.RecommendedDailyCalories;
 
         return new DietSummaryDto
         {
@@ -129,10 +131,11 @@ public class DietService(
             AverageCaloriesPerMeal = mealCount == 0 ? 0 : (double)totalCalories / mealCount,
             CaloriesDelta = target is null ? 0 : totalCalories - target.Value,
             DailyCalorieTarget = target,
+            EstimatedMaintenanceCalories = calorieRecommendation?.EstimatedMaintenanceCalories,
             CaloriesRemaining = target - totalCalories,
             TargetMethodDescription = target is null
-                ? "Target unavailable until profile and weight data exist."
-                : "Derived from latest weight entry plus profile data using Mifflin-St Jeor with sedentary factor 1.2."
+                ? "Target unavailable until a weight goal and current weight are saved."
+                : BuildTargetDescription(weightGoal, calorieRecommendation!)
         };
     }
 
@@ -173,23 +176,48 @@ public class DietService(
 
         return null;
     }
-    
-    /// <summary>
-    /// Estimates the daily caloric intake based off of the Mifflin-St Jeor Equation and a sedentary activity factor of 1.2,
-    /// which is appropriate for most users given that we don't currently track activity levels.
-    /// </summary>
-    /// <param name="user">The user we are calculating the BMR for.</param>
-    /// <param name="weightKg">The weight of the user in kilograms, taken from the database weight table</param>
-    /// <returns></returns>
-    private static int? CalculateDailyCalorieTarget(UserEntry? user, float? weightKg)
-    {
-        if (user is null || weightKg is null || user.HeightM <= 0) return null;
-        var heightCm = user.HeightM * 100f;
-        var age = user.Age;
 
-        // weightKg should not be null beyond this point, but C# is being dumb...
-        var bmr = 10 * weightKg + 6.25 * heightCm - 5 * age + (user.Sex == Sex.Male ? 5 : -161);
-        
-        return (int)Math.Round((bmr ?? 0) * 1.2);
+    private CalorieRecommendationDto? BuildCalorieRecommendation(WeightGoalEntry? weightGoal, float? latestWeightKg)
+    {
+        if (weightGoal is null)
+            return null;
+
+        var currentWeightKg = latestWeightKg ?? weightGoal.CurrentWeightKg;
+        if (currentWeightKg <= 0)
+            return null;
+
+        var frequency = Enum.TryParse<ExerciseFrequency>(weightGoal.ExerciseFrequency, out var parsedFrequency)
+            ? parsedFrequency
+            : ExerciseFrequency.Moderate;
+
+        var intensity = Enum.TryParse<ExerciseIntensity>(weightGoal.ExerciseIntensity, out var parsedIntensity)
+            ? parsedIntensity
+            : ExerciseIntensity.Medium;
+
+        return calorieRecommendationService.Calculate(new CalorieRecommendationInput
+        {
+            CurrentWeightKg = currentWeightKg,
+            GoalWeightKg = weightGoal.GoalWeightKg,
+            GoalType = weightGoal.GoalType,
+            PacePreference = weightGoal.PacePreference,
+            ExerciseFrequency = frequency,
+            ExerciseIntensity = intensity
+        });
+    }
+
+    private static string BuildTargetDescription(WeightGoalEntry? weightGoal, CalorieRecommendationDto recommendation)
+    {
+        if (weightGoal is null)
+            return recommendation.ReasoningSummary;
+
+        var frequency = string.IsNullOrWhiteSpace(weightGoal.ExerciseFrequency)
+            ? "moderate"
+            : weightGoal.ExerciseFrequency.ToLowerInvariant();
+
+        var intensity = string.IsNullOrWhiteSpace(weightGoal.ExerciseIntensity)
+            ? "medium"
+            : weightGoal.ExerciseIntensity.ToLowerInvariant();
+
+        return $"Linked to your saved calorie recommendation using {frequency} exercise frequency and {intensity} intensity. Maintenance: {recommendation.EstimatedMaintenanceCalories} cal/day.";
     }
 }
