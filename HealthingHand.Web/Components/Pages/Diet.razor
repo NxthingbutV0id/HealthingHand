@@ -3,6 +3,7 @@
 
 @using HealthingHand.Web.Services
 @using HealthingHand.Web.Services.DietItems
+@using HealthingHand.Web.Services.OcrItems
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Forms
@@ -11,6 +12,7 @@
 
 @inject IDietService DietService
 @inject NavigationManager Navigation
+@inject IOcrService OcrService
 
 <PageTitle>Diet</PageTitle>
 
@@ -64,6 +66,58 @@ else
                         <h3>Add Meal</h3>
                         <p class="diet-muted">Create a meal entry and add one or more food items.</p>
                     </div>
+                </div>
+                
+                <div class="ocr-panel">
+                    <div class="section-header">
+                        <div>
+                            <h4>Nutrition Label OCR</h4>
+                            <p class="diet-muted">Upload a PNG or JPEG image and extract raw OCR text.</p>
+                        </div>
+                    </div>
+
+                    <InputFile OnChange="HandleNutritionLabelSelected"
+                               accept=".png,.jpg,.jpeg,image/png,image/jpeg" />
+
+                    @if (isOcrScanning)
+                    {
+                        <p class="diet-muted ocr-status">Scanning image...</p>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(ocrErrorMessage))
+                    {
+                        <div class="diet-alert error ocr-alert">@ocrErrorMessage</div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(ocrSuccessMessage))
+                    {
+                        <div class="diet-alert success ocr-alert">@ocrSuccessMessage</div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(ocrRawText))
+                    {
+                        <p class="diet-muted">
+                            Review the editable meal fields below before saving. If OCR missed anything, you can fix it manually.
+                        </p>
+                        <div class="ocr-result">
+                            <div class="ocr-result-top">
+                                <strong>Raw OCR Text</strong>
+
+                                @if (ocrConfidence is not null)
+                                {
+                                    <span class="diet-muted">Confidence: @($"{ocrConfidence:P0}")</span>
+                                }
+                            </div>
+
+                            <textarea class="diet-input diet-textarea ocr-textarea" readonly>@ocrRawText</textarea>
+
+                            <div class="card-actions">
+                                <button type="button" class="diet-btn" @onclick="ClearOcrResult">
+                                    Clear OCR Result
+                                </button>
+                            </div>
+                        </div>
+                    }
                 </div>
 
                 <EditForm Model="meal" OnSubmit="HandleSubmitAsync">
@@ -429,11 +483,55 @@ else
             grid-template-columns: 1fr;
         }
     }
+
+    .ocr-panel {
+        border: 1px dashed #cfcfcf;
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 1.25rem;
+        background: #fcfcfc;
+    }
+
+    .ocr-status {
+        margin-top: 0.75rem;
+    }
+
+    .ocr-alert {
+        margin-top: 0.75rem;
+    }
+
+    .ocr-result {
+        margin-top: 1rem;
+    }
+
+    .ocr-result-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 0.5rem;
+    }
+
+    .ocr-textarea {
+        min-height: 220px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        white-space: pre-wrap;
+    }
 </style>
 
 @code {
     [SupplyParameterFromQuery]
     public string? ReturnUrl { get; set; }
+    
+    private const long OcrMaxUploadBytes = 5 * 1024 * 1024;
+    private const float Tolerance = 0.001f;
+    
+    private bool isOcrScanning;
+    private string? ocrErrorMessage;
+    private string? ocrSuccessMessage;
+    private string ocrRawText = "";
+    private float? ocrConfidence;
 
     private bool isLoading = true;
     private bool isSaving;
@@ -558,12 +656,114 @@ else
         errorMessage = null;
         successMessage = null;
         meal = CreateEmptyMeal();
+        ClearOcrResult();
     }
 
     private bool IsAddRoute()
     {
         var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
         return relative.StartsWith("diet/add", StringComparison.OrdinalIgnoreCase);
+    }
+    
+    private async Task HandleNutritionLabelSelected(InputFileChangeEventArgs e)
+    {
+        IBrowserFile? file = null;
+
+        ocrErrorMessage = null;
+        ocrSuccessMessage = null;
+        ocrRawText = "";
+        ocrConfidence = null;
+        isOcrScanning = true;
+
+        try
+        {
+            file = e.File;
+
+            if (file.Size > OcrMaxUploadBytes)
+            {
+                ocrErrorMessage =
+                    $"File is too large before OCR starts. Browser-reported size: {file.Size / 1024.0:F1} KB. " +
+                    $"Current limit: {OcrMaxUploadBytes / 1024.0:F1} KB.";
+                return;
+            }
+
+            await using var stream = file.OpenReadStream(OcrMaxUploadBytes);
+
+            var result = await OcrService.ScanAsync(
+                stream,
+                suggestedName: Path.GetFileNameWithoutExtension(file.Name),
+                fileName: file.Name,
+                contentType: file.ContentType);
+
+            if (!result.Success || result.Result is null)
+            {
+                ocrErrorMessage =
+                    $"OCR service failed for {file.Name} ({file.Size / 1024.0:F1} KB): " +
+                    $"{result.Error ?? "OCR failed."}";
+                return;
+            }
+
+            ocrRawText = result.Result.RawText;
+            ocrConfidence = result.Result.Confidence;
+            ApplyOcrResultToMeal(result.Result.Parsed);
+
+            if (result.Result.Parsed.Warnings.Count > 0)
+            {
+                ocrErrorMessage =
+                    "OCR found text, but some nutrition values may be missing. Review and correct the meal fields below.";
+            }
+        }
+        catch (IOException ex)
+        {
+            ocrErrorMessage =
+                $"Upload stream failed for {file?.Name ?? "file"} " +
+                $"({(file is null ? 0 : file.Size / 1024.0):F1} KB). {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            ocrErrorMessage = $"Upload failed: {ex.Message}";
+        }
+        finally
+        {
+            isOcrScanning = false;
+        }
+    }
+
+    private void ClearOcrResult()
+    {
+        ocrErrorMessage = null;
+        ocrSuccessMessage = null;
+        ocrRawText = "";
+        ocrConfidence = null;
+    }
+    
+    private void ApplyOcrResultToMeal(ParsedResult parsed) 
+    {
+        var item = parsed.ToDietMealItemInput();
+
+        meal.MealType = string.IsNullOrWhiteSpace(meal.MealType) || meal.MealType == "Meal"
+            ? "Scanned Meal"
+            : meal.MealType;
+
+        if (meal.Items.Count == 1 &&
+            string.IsNullOrWhiteSpace(meal.Items[0].Name) &&
+            Math.Abs(meal.Items[0].Quantity - 1) < Tolerance &&
+            meal.Items[0].Unit == "serving" &&
+            meal.Items[0].CaloriesPerUnit == 0 &&
+            meal.Items[0].ProteinGrams == 0 &&
+            meal.Items[0].CarbsGrams == 0 &&
+            meal.Items[0].FatGrams == 0)
+        {
+            meal.Items[0] = item;
+        }
+        else
+        {
+            meal.Items.Add(item);
+        }
+
+        ocrSuccessMessage = parsed.Warnings.Count > 0 ? 
+            "OCR text extracted. Review the fields below and fix any missing values before saving." : 
+            "OCR text extracted and meal form populated. Review the values below before saving.";
     }
 
     private static DietMealInput CreateEmptyMeal()

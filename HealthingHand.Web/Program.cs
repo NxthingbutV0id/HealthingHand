@@ -3,6 +3,7 @@ using HealthingHand.Data.Persistence;
 using HealthingHand.Web.Components;
 using HealthingHand.Web.Endpoints;
 using HealthingHand.Web.Services;
+using HealthingHand.Web.Services.OcrItems;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
@@ -74,10 +75,9 @@ internal class Program // Personally, I prefer an explicit main method - CT
         builder.Services.AddScoped<IWorkoutService, WorkoutService>();
         builder.Services.AddScoped<IDietService, DietService>();
         builder.Services.AddScoped<ISleepService, SleepService>();
-        builder.Services.AddScoped<ISleepGoalService, SleepGoalService>();
         builder.Services.AddScoped<IWeightService, WeightService>();
-        builder.Services.AddScoped<IWeightGoalService, WeightGoalService>();
-        builder.Services.AddScoped<ICalorieRecommendationService, CalorieRecommendationService>();
+        builder.Services.AddScoped<IOcrService, OcrService>();
+        builder.Services.AddScoped<IParser, Parser>();
 
         var app = builder.Build();
 
