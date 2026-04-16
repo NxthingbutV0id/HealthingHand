@@ -189,6 +189,16 @@ public class DietServiceTests(SqliteTestFixture fixture) : IClassFixture<SqliteT
                 Date = new DateTime(2026, 4, 3, 8, 0, 0, DateTimeKind.Utc),
                 WeightKg = 82
             });
+        db.WeightGoals.Add(new WeightGoalEntry
+        {
+            UserId = user.Id,
+            CurrentWeightKg = 82,
+            GoalWeightKg = 82,
+            GoalType = WeightGoalType.MaintainWeight,
+            PacePreference = GoalPacePreference.Moderate,
+            ExerciseFrequency = "Sedentary",
+            ExerciseIntensity = "Medium"
+        });
 
         db.DietEntries.AddRange(
             new DietEntry
@@ -248,10 +258,9 @@ public class DietServiceTests(SqliteTestFixture fixture) : IClassFixture<SqliteT
         Assert.Equal(17, summary.TotalFatGrams);
         Assert.Equal(475, summary.AverageCaloriesPerMeal);
 
-        // 10*82 + 6.25*180 - 5*20 + 5 = 1850; sedentary factor 1.2 => 2220
-        Assert.Equal(2220, summary.DailyCalorieTarget);
-        Assert.Equal(1270, summary.CaloriesRemaining);
-        Assert.Contains("Mifflin-St Jeor", summary.TargetMethodDescription);
+        Assert.Equal(2169, summary.DailyCalorieTarget);
+        Assert.Equal(1219, summary.CaloriesRemaining);
+        Assert.Contains("Linked to your saved calorie recommendation", summary.TargetMethodDescription);
     }
 
     [Fact]
@@ -303,6 +312,16 @@ public class DietServiceTests(SqliteTestFixture fixture) : IClassFixture<SqliteT
             Date = new DateTime(2026, 4, 3, 20, 0, 0, DateTimeKind.Utc),
             WeightKg = 90
         });
+        db.WeightGoals.Add(new WeightGoalEntry
+        {
+            UserId = user.Id,
+            CurrentWeightKg = 85,
+            GoalWeightKg = 80,
+            GoalType = WeightGoalType.LoseWeight,
+            PacePreference = GoalPacePreference.Moderate,
+            ExerciseFrequency = "Light",
+            ExerciseIntensity = "Low"
+        });
 
         await db.SaveChangesAsync();
 
@@ -327,6 +346,11 @@ public class DietServiceTests(SqliteTestFixture fixture) : IClassFixture<SqliteT
         }
 
         var factory = fixture.Factory;
-        return new DietService(new DietStore(factory), new AccountStore(factory), factory, new HttpContextAccessor { HttpContext = httpContext });
+        return new DietService(
+            new DietStore(factory),
+            new WeightGoalStore(factory),
+            factory,
+            new CalorieRecommendationService(),
+            new HttpContextAccessor { HttpContext = httpContext });
     }
 }
