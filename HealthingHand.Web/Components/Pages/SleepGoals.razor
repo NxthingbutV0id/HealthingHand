@@ -1,0 +1,308 @@
+@page "/sleep-goals"
+@using System.ComponentModel.DataAnnotations
+@using HealthingHand.Web.Services
+@using HealthingHand.Web.Services.SleepItems
+@using Microsoft.AspNetCore.Authorization
+@inject ISleepGoalService SleepGoalService
+
+@attribute [Authorize]
+
+<PageTitle>Sleep Goals</PageTitle>
+
+<div class="goal-shell">
+    <div class="goal-heading">
+        <div>
+            <h1>Sleep Goals</h1>
+            <p class="goal-muted">Set your wake-up time, choose your target sleep amount, and review recommended bedtimes.</p>
+        </div>
+        <a class="goal-link" href="/sleep">Back to sleep entries</a>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="alert alert-success" role="alert">@successMessage</div>
+    }
+
+    <div class="row g-4">
+        <div class="col-12 col-xl-4">
+            <div class="card goal-card h-100">
+                <div class="card-header">Your Sleep Goal</div>
+                <div class="card-body">
+                    <EditForm Model="model" OnValidSubmit="SaveGoalAsync">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="goal-form-grid">
+                            <div>
+                                <label class="form-label">Desired wake-up time</label>
+                                <InputDate Type="InputDateType.Time" class="form-control" @bind-Value="model.DesiredWakeTime" @bind-Value:after="UpdateRecommendations" />
+                            </div>
+
+                            <div>
+                                <label class="form-label">Preferred sleep hours</label>
+                                <InputNumber class="form-control" @bind-Value="model.PreferredSleepHours" @bind-Value:after="UpdateRecommendations" min="4.5" max="12" step="0.5" />
+                                <div class="form-text">We use this to highlight the bedtime closest to your goal.</div>
+                            </div>
+
+                            <div class="goal-note">
+                                Assumes 15 minutes to fall asleep and 90-minute sleep cycles.
+                            </div>
+
+                            <div>
+                                <button type="submit" class="btn btn-primary w-100">Save Sleep Goal</button>
+                            </div>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-8">
+            <div class="bedtime-panel">
+                <div class="bedtime-panel-header">
+                    <div>
+                        <h2>Recommended bedtimes</h2>
+                        <p class="goal-muted mb-0">Wake up at <strong>@model.DesiredWakeTime.ToString("hh:mm tt")</strong></p>
+                    </div>
+
+                    @if (savedGoal?.Id > 0)
+                    {
+                        <div class="saved-summary">
+                            <span class="saved-label">Saved best bedtime</span>
+                            <strong>@savedGoal.BestRecommendedBedtime.ToString("hh:mm tt")</strong>
+                        </div>
+                    }
+                </div>
+
+                <div class="bedtime-grid">
+                    @foreach (var recommendation in recommendations)
+                    {
+                        <article class="bedtime-card @(recommendation.IsBest ? "best-card" : "") @(recommendation.IsClosestToGoal ? "goal-match-card" : "")">
+                            <div class="bedtime-badges">
+                                @if (recommendation.IsBest)
+                                {
+                                    <span class="bedtime-badge best-badge">Best</span>
+                                }
+
+                                @if (recommendation.IsClosestToGoal)
+                                {
+                                    <span class="bedtime-badge goal-badge">Closest To Goal</span>
+                                }
+                            </div>
+
+                            <div class="bedtime-time">@recommendation.Bedtime.ToString("hh:mm tt")</div>
+                            <div class="bedtime-hours">@recommendation.SleepHours.ToString("0.#") hours</div>
+                            <div class="bedtime-caption">@recommendation.Cycles sleep cycles</div>
+                        </article>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .goal-shell {
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+    }
+
+    .goal-heading {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .goal-link {
+        color: #1f6feb;
+        text-decoration: none;
+        font-weight: 600;
+    }
+
+    .goal-muted {
+        color: #5f6b7a;
+    }
+
+    .goal-card,
+    .bedtime-panel {
+        border: 1px solid #dbe3ec;
+        border-radius: 20px;
+        background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+        box-shadow: 0 18px 40px rgba(31, 111, 235, 0.08);
+    }
+
+    .goal-form-grid {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .goal-note {
+        padding: 0.9rem 1rem;
+        border-radius: 14px;
+        background: #eef5ff;
+        color: #355070;
+        font-size: 0.95rem;
+    }
+
+    .bedtime-panel {
+        padding: 1.25rem;
+        height: 100%;
+    }
+
+    .bedtime-panel-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .saved-summary {
+        padding: 0.85rem 1rem;
+        border-radius: 14px;
+        background: #f1f7ff;
+        min-width: 180px;
+    }
+
+    .saved-label {
+        display: block;
+        color: #5f6b7a;
+        font-size: 0.85rem;
+        margin-bottom: 0.2rem;
+    }
+
+    .bedtime-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 1rem;
+    }
+
+    .bedtime-card {
+        border-radius: 18px;
+        padding: 1rem;
+        background: white;
+        border: 1px solid #dde7f2;
+        min-height: 180px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+
+    .best-card {
+        border-color: #1f6feb;
+        box-shadow: 0 14px 30px rgba(31, 111, 235, 0.12);
+    }
+
+    .goal-match-card {
+        background: #f7fbff;
+    }
+
+    .bedtime-badges {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .bedtime-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.3rem 0.6rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 700;
+    }
+
+    .best-badge {
+        background: #1f6feb;
+        color: white;
+    }
+
+    .goal-badge {
+        background: #e8f3e8;
+        color: #2f6f44;
+    }
+
+    .bedtime-time {
+        font-size: 1.8rem;
+        font-weight: 700;
+        line-height: 1.05;
+    }
+
+    .bedtime-hours {
+        font-size: 1.05rem;
+        font-weight: 600;
+    }
+
+    .bedtime-caption {
+        color: #5f6b7a;
+        font-size: 0.9rem;
+    }
+</style>
+
+@code {
+    private sealed class SleepGoalFormModel
+    {
+        [Required]
+        public TimeOnly DesiredWakeTime { get; set; } = new(7, 0);
+
+        [Range(typeof(float), "4.5", "12")]
+        public float PreferredSleepHours { get; set; } = 7.5f;
+    }
+
+    private SleepGoalFormModel model = new();
+    private SleepGoalDto? savedGoal;
+    private List<BedtimeRecommendation> recommendations = [];
+    private string? successMessage;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGoalAsync();
+    }
+
+    private async Task SaveGoalAsync()
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        var result = await SleepGoalService.SaveGoalAsync(new SleepGoalInput
+        {
+            DesiredWakeTime = model.DesiredWakeTime,
+            PreferredSleepHours = model.PreferredSleepHours
+        });
+
+        if (!result.Success)
+        {
+            errorMessage = result.Error;
+            return;
+        }
+
+        successMessage = "Sleep goal saved.";
+        await LoadGoalAsync();
+    }
+
+    private async Task LoadGoalAsync()
+    {
+        savedGoal = await SleepGoalService.GetGoalAsync();
+        model.DesiredWakeTime = savedGoal.DesiredWakeTime;
+        model.PreferredSleepHours = savedGoal.PreferredSleepHours;
+        recommendations = savedGoal.Recommendations.ToList();
+    }
+
+    private async Task UpdateRecommendations()
+    {
+        recommendations = SleepGoalService
+            .CalculateRecommendations(model.DesiredWakeTime, model.PreferredSleepHours)
+            .ToList();
+    }
+}

@@ -7,7 +7,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\HealthingHand.Data\HealthingHand.Data.csproj" />
+        <ProjectReference Include="..\HealthingHand.Data\HealthingHand.Data.csproj" />
     </ItemGroup>
 
     <ItemGroup>
@@ -15,6 +15,19 @@
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
+        <PackageReference Include="Tesseract" Version="5.2.0" />
     </ItemGroup>
+
+    <ItemGroup>
+        <None Update="tessdata/**/*">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+
+    <Target Name="link_deps" AfterTargets="Build">
+        <MakeDir Directories="$(TargetDir)x64" />
+        <Exec Command='ln -sf /opt/homebrew/lib/libleptonica.dylib "$(TargetDir)x64/libleptonica-1.82.0.dylib"' />
+        <Exec Command='ln -sf /opt/homebrew/lib/libtesseract.dylib "$(TargetDir)x64/libtesseract50.dylib"' />
+    </Target>
 
 </Project>

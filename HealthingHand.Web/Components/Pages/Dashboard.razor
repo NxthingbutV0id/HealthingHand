@@ -13,7 +13,6 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IDatabase Database
 @inject IDietService DietService
-
 <PageTitle>Dashboard</PageTitle>
 
 @if (isLoading)
@@ -43,9 +42,10 @@ else
                 <h3>Sleep</h3>
                 <div class="card-number">@sleepCount</div>
                 <p>@sleepSummary</p>
+                <p class="dashboard-muted small">@sleepGoalSummary</p>
                 <div class="card-actions">
-                    <a class="dashboard-btn primary" href="/sleep/add?returnUrl=/dashboard">Add entry</a>
                     <a class="dashboard-btn" href="/sleep">View Sleep</a>
+                    <a class="dashboard-btn" href="/sleep-goals">Sleep goals</a>
                 </div>
             </section>
 
@@ -59,7 +59,12 @@ else
 
                     @if (todayDiet.DailyCalorieTarget is not null)
                     {
-                        <p><strong>Target:</strong> @todayDiet.DailyCalorieTarget cal</p>
+                        @if (todayDiet.EstimatedMaintenanceCalories is not null)
+                        {
+                            <p><strong>Maintenance:</strong> @todayDiet.EstimatedMaintenanceCalories cal</p>
+                        }
+
+                        <p><strong>Recommended target:</strong> @todayDiet.DailyCalorieTarget cal</p>
 
                         @if (todayDiet.CaloriesRemaining is not null && todayDiet.CaloriesRemaining >= 0)
                         {
@@ -83,8 +88,8 @@ else
                 </div>
 
                 <div class="card-actions">
-                    <a class="dashboard-btn primary" href="/diet/add?returnUrl=/dashboard">Add entry</a>
                     <a class="dashboard-btn" href="/diet">View entries</a>
+                    <a class="dashboard-btn" href="/weight-goals">Weight details</a>
                 </div>
             </section>
 
@@ -93,7 +98,6 @@ else
                 <div class="card-number">@workoutCount</div>
                 <p>@workoutSummary</p>
                 <div class="card-actions">
-                    <a class="dashboard-btn primary" href="/workout/add?returnUrl=/dashboard">Add entry</a>
                     <a class="dashboard-btn" href="/workouts">View Workouts</a>
                 </div>
             </section>
@@ -104,9 +108,18 @@ else
                     @(latestWeightKg is not null ? $"{latestWeightKg:0.0}" : "-")
                 </div>
                 <p>@weightSummary</p>
+                <p class="dashboard-muted small">@weightGoalSummary</p>
+                @if (todayDiet.EstimatedMaintenanceCalories is not null || todayDiet.DailyCalorieTarget is not null)
+                {
+                    <p class="dashboard-muted small">
+                        Maintenance: @(todayDiet.EstimatedMaintenanceCalories?.ToString() ?? "-") cal, Goal target: @(todayDiet.DailyCalorieTarget?.ToString() ?? "-") cal
+                    </p>
+                }
+                <p class="dashboard-muted small">@todayDiet.TargetMethodDescription</p>
                 <div class="card-actions">
-                    <a class="dashboard-btn primary" href="/user">Log weight</a>
-                    <a class="dashboard-btn" href="/user">View history</a>
+                    <a class="dashboard-btn primary" href="/weight-goals">Log weight</a>
+                    <a class="dashboard-btn" href="/weight-goals">View weight</a>
+                    <a class="dashboard-btn" href="/user">Edit goal</a>
                 </div>
             </section>
         </div>
@@ -225,10 +238,11 @@ else
 
     private string weekLabel = "";
     private string sleepSummary = "No sleep entries logged this week.";
+    private string sleepGoalSummary = "No saved sleep goal yet.";
     private string dietSummary = "No meals logged this week.";
     private string workoutSummary = "No workouts logged this week.";
     private string weightSummary = "No weight entries logged this week.";
-    
+    private string weightGoalSummary = "No saved weight goal yet.";
     private DietSummaryDto todayDiet = new();
 
     protected override async Task OnInitializedAsync()
@@ -290,6 +304,24 @@ else
                 .FirstOrDefault();
 
             latestWeightKg = latestWeightEntry?.WeightKg;
+
+            var sleepGoal = await Database.SleepGoals.GetForUserAsync(userId);
+            if (sleepGoal is not null)
+            {
+                sleepGoalSummary = $"Wake at {sleepGoal.DesiredWakeTime.ToString("hh:mm tt")} and aim for {sleepGoal.PreferredSleepHours:0.#} hours.";
+            }
+
+            var weightGoal = await Database.WeightGoals.GetForUserAsync(userId);
+            if (weightGoal is not null)
+            {
+                var difference = weightGoal.GoalWeightKg - weightGoal.CurrentWeightKg;
+                weightGoalSummary = weightGoal.GoalType switch
+                {
+                    WeightGoalType.LoseWeight => $"Lose {Math.Abs(difference):0.##} kg at a {weightGoal.PacePreference.ToString().ToLowerInvariant()} pace.",
+                    WeightGoalType.GainWeight => $"Gain {Math.Abs(difference):0.##} kg at a {weightGoal.PacePreference.ToString().ToLowerInvariant()} pace.",
+                    _ => "Maintain your current weight."
+                };
+            }
 
             totalEntriesThisWeek = sleepCount + dietCount + workoutCount + weightCount;
             modulesWithActivity =

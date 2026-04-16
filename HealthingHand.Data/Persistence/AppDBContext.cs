@@ -7,11 +7,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 {
     public DbSet<UserEntry> Users => Set<UserEntry>();
     public DbSet<SleepEntry> SleepEntries => Set<SleepEntry>();
+    public DbSet<SleepGoalEntry> SleepGoals => Set<SleepGoalEntry>();
     public DbSet<DietEntry> DietEntries => Set<DietEntry>();
     public DbSet<MealItemEntry> MealItems => Set<MealItemEntry>();
     public DbSet<WorkoutEntry> WorkoutEntries => Set<WorkoutEntry>();
     public DbSet<ExerciseEntry> ExerciseEntries => Set<ExerciseEntry>();
     public DbSet<WeightEntry> WeightEntries => Set<WeightEntry>();
+    public DbSet<WeightGoalEntry> WeightGoals => Set<WeightGoalEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,6 +37,22 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<SleepEntry>()
             .HasIndex(s => new { s.UserId, s.SleepDate })
             .IsUnique();
+
+        modelBuilder.Entity<SleepGoalEntry>()
+            .HasOne(s => s.User)
+            .WithMany()
+            .HasForeignKey(s => s.UserId);
+
+        modelBuilder.Entity<SleepGoalEntry>()
+            .HasIndex(s => s.UserId)
+            .IsUnique();
+
+        modelBuilder.Entity<SleepGoalEntry>(e =>
+        {
+            e.Property(s => s.PreferredSleepHours).IsRequired();
+            e.Property(s => s.CreatedAt).IsRequired();
+            e.Property(s => s.UpdatedAt).IsRequired();
+        });
         
         modelBuilder.Entity<DietEntry>()
             .HasMany(m => m.Items)
@@ -91,5 +109,32 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<WeightEntry>()
             .HasIndex(w => new { w.UserId, w.Date })
             .IsUnique();
+
+        modelBuilder.Entity<WeightGoalEntry>()
+            .HasOne(w => w.User)
+            .WithMany()
+            .HasForeignKey(w => w.UserId);
+
+        modelBuilder.Entity<WeightGoalEntry>()
+            .HasIndex(w => w.UserId)
+            .IsUnique();
+
+        modelBuilder.Entity<WeightGoalEntry>()
+            .Property(w => w.GoalType)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<WeightGoalEntry>()
+            .Property(w => w.PacePreference)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<WeightGoalEntry>(e =>
+        {
+            e.Property(w => w.CurrentWeightKg).IsRequired();
+            e.Property(w => w.GoalWeightKg).IsRequired();
+            e.Property(w => w.ExerciseFrequency).IsRequired();
+            e.Property(w => w.ExerciseIntensity).IsRequired();
+            e.Property(w => w.CreatedAt).IsRequired();
+            e.Property(w => w.UpdatedAt).IsRequired();
+        });
     }
 }

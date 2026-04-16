@@ -10,6 +10,7 @@ public interface IWeightService
     Task<(bool Success, string? Error)> SaveAsync(WeightEntryInput input);
     Task<IReadOnlyList<WeightListItem>> ListHistoryAsync(DateTime from, DateTime to);
     Task<IReadOnlyList<WeightTrendPoint>> GetTrendAsync(int days);
+    Task<float?> GetLatestWeightKgAsync();
 }
 
 public class WeightService(IWeightStore weights, IHttpContextAccessor httpContextAccessor) : IWeightService
@@ -87,6 +88,16 @@ public class WeightService(IWeightStore weights, IHttpContextAccessor httpContex
                 WeightKg = w.WeightKg
             })
             .ToList();
+    }
+
+    public async Task<float?> GetLatestWeightKgAsync()
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+            return null;
+
+        var latest = await weights.GetLatestForUserAsync(userId.Value);
+        return latest?.WeightKg;
     }
 
     private Guid? GetCurrentUserId()

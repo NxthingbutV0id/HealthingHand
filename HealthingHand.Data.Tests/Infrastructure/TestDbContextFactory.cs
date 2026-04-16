@@ -1,7 +1,7 @@
 using HealthingHand.Data.Persistence;
 using Microsoft.EntityFrameworkCore;
 
-namespace HealthingHand.Data.Tests;
+namespace HealthingHand.Data.Tests.Infrastructure;
 
 public sealed class TestDbContextFactory(DbContextOptions<AppDbContext> options) : IDbContextFactory<AppDbContext>
 {

@@ -17,9 +17,11 @@ public static class DataServiceCollectionExtensions
 
         services.AddScoped<IAccountStore, AccountStore>();
         services.AddScoped<ISleepStore, SleepStore>();
+        services.AddScoped<ISleepGoalStore, SleepGoalStore>();
         services.AddScoped<IDietStore, DietStore>();
         services.AddScoped<IWorkoutStore, WorkoutStore>();
         services.AddScoped<IWeightStore, WeightStore>();
+        services.AddScoped<IWeightGoalStore, WeightGoalStore>();
         
         services.AddScoped<IDatabase, Database>();
         return services;

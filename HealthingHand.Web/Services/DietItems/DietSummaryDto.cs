@@ -16,5 +16,6 @@ public class DietSummaryDto
     public int? DailyCalorieTarget { get; set; }
     public int? CaloriesRemaining { get; set; }
     public int CaloriesDelta { get; set; } // positive = over target, negative = under target
+    public int? EstimatedMaintenanceCalories { get; set; }
     public string TargetMethodDescription { get; set; } = "";
 }
