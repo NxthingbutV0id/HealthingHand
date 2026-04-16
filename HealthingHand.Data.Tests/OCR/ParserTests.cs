@@ -110,7 +110,7 @@ public class ParserTests
     }
     
     [Fact]
-    public void Parse_TwoColumnNutritionLabel_OcrText_ExtractsPerServingValues()
+    public void TwoColumnNutritionLabel_OcrText_ExtractsPerServingValues()
     {
         var parser = new Parser();
 
