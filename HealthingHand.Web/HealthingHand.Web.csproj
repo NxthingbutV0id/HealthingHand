@@ -24,7 +24,7 @@
         </None>
     </ItemGroup>
 
-    <Target Name="link_deps" AfterTargets="Build">
+    <Target Name="link_deps" AfterTargets="Build" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
         <MakeDir Directories="$(TargetDir)x64" />
         <Exec Command='ln -sf /opt/homebrew/lib/libleptonica.dylib "$(TargetDir)x64/libleptonica-1.82.0.dylib"' />
         <Exec Command='ln -sf /opt/homebrew/lib/libtesseract.dylib "$(TargetDir)x64/libtesseract50.dylib"' />

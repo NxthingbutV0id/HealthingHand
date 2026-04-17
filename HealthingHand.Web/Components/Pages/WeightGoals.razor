@@ -44,7 +44,7 @@
                         <div class="goal-form-grid">
                             <div>
                                 <label class="form-label">Date</label>
-                                <InputDate class="form-control" @bind-Value="weightModel.Date" />
+                                <InputDate class="form-control" @bind-Value="weightModel.Date" max="@TodayDateString" />
                             </div>
 
                             <div>
@@ -195,6 +195,7 @@
                                 <tr>
                                     <th>Date</th>
                                     <th>Weight</th>
+                                    <th></th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -203,6 +204,11 @@
                                     <tr>
                                         <td>@entry.Date.ToString("MMM dd, yyyy")</td>
                                         <td>@entry.WeightKg.ToString("0.##") kg</td>
+                                        <td class="text-end">
+                                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteWeightAsync(entry.Id)">
+                                                Delete
+                                            </button>
+                                        </td>
                                     </tr>
                                 }
                                 </tbody>
@@ -387,6 +393,7 @@
     private string weightRangeText = "-";
     private string? successMessage;
     private string? errorMessage;
+    private string TodayDateString => DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     protected override async Task OnInitializedAsync()
     {
@@ -412,6 +419,22 @@
 
         successMessage = "Weight entry saved.";
         weightModel.WeightKg = 0;
+        await LoadPageAsync();
+    }
+
+    private async Task DeleteWeightAsync(int id)
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        var result = await WeightService.DeleteAsync(id);
+        if (!result.Success)
+        {
+            errorMessage = result.Error;
+            return;
+        }
+
+        successMessage = "Weight entry deleted.";
         await LoadPageAsync();
     }
 

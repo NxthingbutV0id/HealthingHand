@@ -8,6 +8,7 @@ namespace HealthingHand.Web.Services;
 public interface IWeightService
 {
     Task<(bool Success, string? Error)> SaveAsync(WeightEntryInput input);
+    Task<(bool Success, string? Error)> DeleteAsync(int id);
     Task<IReadOnlyList<WeightListItem>> ListHistoryAsync(DateTime from, DateTime to);
     Task<IReadOnlyList<WeightTrendPoint>> GetTrendAsync(int days);
     Task<float?> GetLatestWeightKgAsync();
@@ -66,6 +67,20 @@ public class WeightService(IWeightStore weights, IHttpContextAccessor httpContex
             .ToList();
     }
 
+    public async Task<(bool Success, string? Error)> DeleteAsync(int id)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+            return (false, "Not signed in.");
+
+        var existing = await weights.GetAsync(id);
+        if (existing is null || existing.UserId != userId.Value)
+            return (false, "Weight entry not found.");
+
+        await weights.DeleteAsync(id);
+        return (true, null);
+    }
+
     public async Task<IReadOnlyList<WeightTrendPoint>> GetTrendAsync(int days)
     {
         var userId = GetCurrentUserId();
@@ -113,6 +128,9 @@ public class WeightService(IWeightStore weights, IHttpContextAccessor httpContex
     {
         if (input.Date == default)
             return "Weight date is required.";
+
+        if (input.Date.Date > DateTime.Today)
+            return "Weight date cannot be in the future.";
 
         if (input.WeightKg <= 0 || input.WeightKg > 1000)
             return "Weight must be between 0 and 1000 kg.";

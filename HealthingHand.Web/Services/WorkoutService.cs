@@ -119,11 +119,19 @@ public class WorkoutService(
 
     private static string? Validate(WorkoutEntryInput input)
     {
+        var now = DateTime.Now;
+
         if (input.StartedAt == default)
             return "Workout start time is required.";
 
+        if (input.StartedAt > now)
+            return "Workout entries cannot start in the future.";
+
         if (input.DurationMinutes <= 0 || input.DurationMinutes > 600)
             return "Workout duration must be between 1 and 600 minutes.";
+
+        if (input.StartedAt.AddMinutes(input.DurationMinutes) > now)
+            return "Workout entries cannot end in the future.";
 
         if (input.SelfReportedIntensity is < 0 or > 5)
             return "Intensity must be between 0 and 5.";

@@ -4,6 +4,7 @@
 @using HealthingHand.Web.Services
 @using HealthingHand.Web.Services.DietItems
 @using HealthingHand.Web.Services.OcrItems
+@using System.Globalization
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Forms
@@ -131,8 +132,9 @@ else
                             <label>Eaten At</label>
                             <input class="diet-input"
                                    type="datetime-local"
-                                   @bind="meal.EatenAt"
-                                   @bind:format="yyyy-MM-ddTHH:mm" />
+                                   value="@MealDateTimeValue"
+                                   max="@CurrentDateTimeMax"
+                                   @onchange="HandleMealDateTimeChanged" />
                         </div>
                     </div>
 
@@ -245,11 +247,11 @@ else
                                         <p class="diet-muted">@recentMeal.EatenAt.ToString("MMM d, yyyy h:mm tt")</p>
                                     </div>
 
-                                    <div class="meal-calories">
-                                        <strong>@recentMeal.TotalCalories</strong>
-                                        <span>cal</span>
-                                    </div>
+                                <div class="meal-calories">
+                                    <strong>@recentMeal.TotalCalories</strong>
+                                    <span>cal</span>
                                 </div>
+                            </div>
 
                                 @if (!string.IsNullOrWhiteSpace(recentMeal.Notes))
                                 {
@@ -261,6 +263,12 @@ else
                                     <span>P @recentMeal.TotalProteinGrams.ToString("0.#")g</span>
                                     <span>C @recentMeal.TotalCarbsGrams.ToString("0.#")g</span>
                                     <span>F @recentMeal.TotalFatGrams.ToString("0.#")g</span>
+                                </div>
+
+                                <div class="card-actions">
+                                    <button type="button" class="diet-btn danger" @onclick="() => DeleteMealAsync(recentMeal.Id)">
+                                        Delete
+                                    </button>
                                 </div>
                             </article>
                         }
@@ -543,6 +551,10 @@ else
     private DietSummaryDto todaySummary = new();
 
     private string headerSubtitle = "Create a meal entry and review recent nutrition history.";
+    private string CurrentDateTimeMax => DateTime.Now.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture);
+    private string MealDateTimeValue => meal.EatenAt == default
+        ? string.Empty
+        : meal.EatenAt.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture);
 
     private bool HasReturnUrl =>
         !string.IsNullOrWhiteSpace(ReturnUrl) &&
@@ -651,6 +663,23 @@ else
         }
     }
 
+    private async Task DeleteMealAsync(int id)
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        var result = await DietService.DeleteMealAsync(id);
+        if (!result.Success)
+        {
+            errorMessage = result.Error ?? "Unable to delete meal.";
+            return;
+        }
+
+        successMessage = "Meal deleted.";
+        await RefreshSummaryAsync();
+        await RefreshMealsAsync();
+    }
+
     private void ResetForm()
     {
         errorMessage = null;
@@ -663,6 +692,26 @@ else
     {
         var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
         return relative.StartsWith("diet/add", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void HandleMealDateTimeChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            meal.EatenAt = default;
+            return;
+        }
+
+        if (DateTime.TryParseExact(
+                value,
+                "yyyy-MM-ddTHH:mm",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var parsed))
+        {
+            meal.EatenAt = parsed;
+        }
     }
     
     private async Task HandleNutritionLabelSelected(InputFileChangeEventArgs e)

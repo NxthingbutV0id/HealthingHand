@@ -38,7 +38,7 @@
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">Sleep Date</label>
-                            <InputDate class="form-control" @bind-Value="model.SleepDate" />
+                            <InputDate class="form-control" @bind-Value="model.SleepDate" max="@TodayDateString" />
                         </div>
 
                         <div class="col-md-6">
@@ -321,6 +321,7 @@
     private string chartLinePoints = "";
     private string? message;
     private string? errorMessage;
+    private string TodayDateString => DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     protected override async Task OnInitializedAsync()
     {

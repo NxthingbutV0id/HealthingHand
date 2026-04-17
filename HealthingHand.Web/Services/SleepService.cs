@@ -175,8 +175,11 @@ public class SleepService(ISleepStore sleeps, IHttpContextAccessor httpContextAc
 
     private static string? Validate(SleepEntryInput input)
     {
+        var now = DateTime.Now;
+
         if (input.StartTime == default) return "Start time is required.";
         if (input.EndTime == default) return "End time is required.";
+        if (input.StartTime > now || input.EndTime > now) return "Sleep entries cannot be logged in the future.";
         if (input.EndTime <= input.StartTime) return "End time must be after start time.";
         var duration = input.EndTime - input.StartTime;
         if (duration.TotalHours > 24) return "Sleep duration cannot exceed 24 hours.";

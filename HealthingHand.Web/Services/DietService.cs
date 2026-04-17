@@ -11,6 +11,7 @@ namespace HealthingHand.Web.Services;
 public interface IDietService
 {
     Task<(bool Success, string? Error, int? MealId)> CreateMealAsync(DietMealInput input);
+    Task<(bool Success, string? Error)> DeleteMealAsync(int id);
     Task<IReadOnlyList<DietMealListItem>> ListMealsAsync(DateTime from, DateTime to);
     Task<DietSummaryDto> GetSummaryAsync(DateTime from, DateTime to);
     Task<DietSummaryDto> GetTodaySummaryAsync();
@@ -81,6 +82,20 @@ public class DietService(
                 TotalFatGrams = m.Items.Sum(i => i.FatGrams)
             })
             .ToList();
+    }
+
+    public async Task<(bool Success, string? Error)> DeleteMealAsync(int id)
+    {
+        var userId = GetCurrentUserId();
+        if (userId is null)
+            return (false, "Not signed in.");
+
+        var meal = await diets.GetAsync(id);
+        if (meal is null || meal.UserId != userId.Value)
+            return (false, "Meal not found.");
+
+        await diets.DeleteAsync(id);
+        return (true, null);
     }
 
     public async Task<DietSummaryDto> GetSummaryAsync(DateTime from, DateTime to)
@@ -158,6 +173,7 @@ public class DietService(
     private static string? Validate(DietMealInput input)
     {
         if (input.EatenAt == default) return "Meal date/time is required.";
+        if (input.EatenAt > DateTime.Now) return "Meal date/time cannot be in the future.";
         if (string.IsNullOrWhiteSpace(input.MealType)) return "Meal type is required.";
         if (input.Items.Count == 0) return "Add at least one food item.";
 
