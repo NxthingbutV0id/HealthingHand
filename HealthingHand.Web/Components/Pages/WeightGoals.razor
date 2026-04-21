@@ -3,10 +3,12 @@
 @using System.Globalization
 @using HealthingHand.Data.Entries
 @using HealthingHand.Web.Services
+@using HealthingHand.Web.Services.DietItems
 @using HealthingHand.Web.Services.WeightItems
 @using Microsoft.AspNetCore.Authorization
 @inject IWeightGoalService WeightGoalService
 @inject IWeightService WeightService
+@inject IDietService DietService
 @inject ICalorieRecommendationService CalorieRecommendationService
 
 @attribute [Authorize]
@@ -127,7 +129,7 @@
     </div>
 
     <div class="row g-4">
-        <div class="col-12 col-xl-7">
+        <div class="col-12 col-xl-6">
             <div class="card summary-card weight-chart-card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <span>Weight Trend</span>
@@ -176,7 +178,68 @@
             </div>
         </div>
 
-        <div class="col-12 col-xl-5">
+        <div class="col-12 col-xl-6">
+            <div class="card summary-card calorie-chart-card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span>Calorie Trend</span>
+                    <span class="goal-muted">Last 14 days</span>
+                </div>
+                <div class="card-body">
+                    @if (!hasCalorieData)
+                    {
+                        <p class="mb-0 goal-muted">Log meals to see your daily calorie totals here.</p>
+                    }
+                    else
+                    {
+                        <div class="chart-summary-row">
+                            <div>
+                                <div class="chart-stat">@latestCaloriesText</div>
+                                <div class="goal-muted small">most recent day with meals</div>
+                            </div>
+                            <div>
+                                <div class="chart-stat">@averageCaloriesText</div>
+                                <div class="goal-muted small">14-day average</div>
+                            </div>
+                        </div>
+
+                        <svg class="weight-chart" viewBox="0 0 640 260" role="img" aria-label="Daily calories over the last 14 days">
+                            <line x1="56" y1="220" x2="612" y2="220" class="chart-axis" />
+                            <line x1="56" y1="24" x2="56" y2="220" class="chart-axis" />
+                            <line x1="56" y1="24" x2="612" y2="24" class="chart-grid" />
+                            <line x1="56" y1="122" x2="612" y2="122" class="chart-grid" />
+                            <line x1="56" y1="220" x2="612" y2="220" class="chart-grid" />
+
+                            @if (!string.IsNullOrWhiteSpace(calorieTargetLinePoints))
+                            {
+                                <polyline points="@calorieTargetLinePoints" class="chart-target-line" />
+                            }
+
+                            <polyline points="@calorieChartLinePoints" class="calorie-chart-line" />
+
+                            @foreach (var point in calorieChartPoints)
+                            {
+                                <circle cx="@point.X" cy="@point.Y" r="4" class="calorie-chart-dot" />
+                            }
+                        </svg>
+
+                        <div class="chart-footer-labels">
+                            <span>@calorieChartPoints.First().Label</span>
+                            <span>@calorieChartPoints[calorieChartPoints.Count / 2].Label</span>
+                            <span>@calorieChartPoints.Last().Label</span>
+                        </div>
+
+                        @if (calorieRecommendation.RecommendedDailyCalories > 0)
+                        {
+                            <p class="goal-muted small mb-0 mt-3">Dashed line shows your recommended daily target of @calorieRecommendation.RecommendedDailyCalories cal.</p>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-12">
             <div class="card summary-card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Recent Weight Entries</span>
@@ -315,6 +378,10 @@
         overflow: hidden;
     }
 
+    .calorie-chart-card {
+        overflow: hidden;
+    }
+
     .chart-summary-row {
         display: flex;
         justify-content: space-between;
@@ -354,10 +421,32 @@
         stroke-linejoin: round;
     }
 
+    .calorie-chart-line {
+        fill: none;
+        stroke: #ff8a3d;
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
     .chart-dot {
         fill: #1f6feb;
         stroke: white;
         stroke-width: 2;
+    }
+
+    .calorie-chart-dot {
+        fill: #ff8a3d;
+        stroke: white;
+        stroke-width: 2;
+    }
+
+    .chart-target-line {
+        fill: none;
+        stroke: #9aa7b8;
+        stroke-width: 2;
+        stroke-dasharray: 8 6;
+        stroke-linecap: round;
     }
 
     .chart-footer-labels {
@@ -381,6 +470,8 @@
     }
 
     private sealed record WeightChartPoint(string Label, double WeightKg, double X, double Y);
+    private sealed record DailyCalorieTotal(DateTime Date, int Calories);
+    private sealed record CalorieChartPoint(string Label, int Calories, double X, double Y);
 
     private WeightFormModel weightModel = new();
     private WeightGoalDto goalSummary = new();
@@ -388,9 +479,15 @@
     private List<WeightListItem> weightEntries = [];
     private List<WeightTrendPoint> weightTrend = [];
     private List<WeightChartPoint> chartPoints = [];
+    private List<CalorieChartPoint> calorieChartPoints = [];
     private string chartLinePoints = "";
+    private string calorieChartLinePoints = "";
+    private string calorieTargetLinePoints = "";
     private string latestWeightText = "-";
     private string weightRangeText = "-";
+    private string latestCaloriesText = "-";
+    private string averageCaloriesText = "-";
+    private bool hasCalorieData;
     private string? successMessage;
     private string? errorMessage;
     private string TodayDateString => DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -443,6 +540,7 @@
         await LoadGoalAsync();
         await LoadWeightAsync();
         RecalculateCalories();
+        await LoadCalorieTrendAsync();
     }
 
     private async Task LoadGoalAsync()
@@ -491,6 +589,25 @@
             ExerciseFrequency = goalSummary.ExerciseFrequency,
             ExerciseIntensity = goalSummary.ExerciseIntensity
         });
+    }
+
+    private async Task LoadCalorieTrendAsync()
+    {
+        const int totalDays = 14;
+        var from = DateTime.Today.AddDays(-(totalDays - 1));
+        var to = DateTime.Today.AddDays(1).AddTicks(-1);
+
+        var meals = await DietService.ListMealsAsync(from, to);
+        var caloriesByDate = meals
+            .GroupBy(meal => meal.EatenAt.Date)
+            .ToDictionary(group => group.Key, group => group.Sum(meal => meal.TotalCalories));
+
+        var series = Enumerable.Range(0, totalDays)
+            .Select(offset => from.AddDays(offset).Date)
+            .Select(date => new DailyCalorieTotal(date, caloriesByDate.GetValueOrDefault(date, 0)))
+            .ToList();
+
+        BuildCalorieChart(series);
     }
 
     private void BuildChart()
@@ -544,6 +661,66 @@
 
         latestWeightText = $"{ordered.Last().WeightKg:0.##} kg";
         weightRangeText = $"{minWeight:0.##} to {maxWeight:0.##} kg";
+    }
+
+    private void BuildCalorieChart(IReadOnlyList<DailyCalorieTotal> series)
+    {
+        const double chartLeft = 56;
+        const double chartTop = 24;
+        const double chartWidth = 556;
+        const double chartHeight = 196;
+
+        hasCalorieData = series.Any(point => point.Calories > 0);
+
+        if (!hasCalorieData)
+        {
+            calorieChartPoints = [];
+            calorieChartLinePoints = "";
+            calorieTargetLinePoints = "";
+            latestCaloriesText = "-";
+            averageCaloriesText = "-";
+            return;
+        }
+
+        var peakCalories = series.Max(point => (double)point.Calories);
+        var targetCalories = Math.Max(0, calorieRecommendation.RecommendedDailyCalories);
+        var chartMaxCalories = Math.Max(2000, Math.Max(peakCalories, targetCalories) + 250);
+        var xStep = series.Count == 1 ? 0 : chartWidth / (series.Count - 1);
+
+        calorieChartPoints = series
+            .Select((point, index) =>
+            {
+                var x = chartLeft + (xStep * index);
+                var normalized = point.Calories / chartMaxCalories;
+                var y = chartTop + chartHeight - (normalized * chartHeight);
+
+                return new CalorieChartPoint(
+                    point.Date.ToString("MM/dd", CultureInfo.InvariantCulture),
+                    point.Calories,
+                    x,
+                    y);
+            })
+            .ToList();
+
+        calorieChartLinePoints = string.Join(
+            " ",
+            calorieChartPoints.Select(point =>
+                $"{point.X.ToString("0.##", CultureInfo.InvariantCulture)},{point.Y.ToString("0.##", CultureInfo.InvariantCulture)}"));
+
+        if (targetCalories > 0)
+        {
+            var targetY = chartTop + chartHeight - ((targetCalories / chartMaxCalories) * chartHeight);
+            calorieTargetLinePoints = $"{chartLeft.ToString("0.##", CultureInfo.InvariantCulture)},{targetY.ToString("0.##", CultureInfo.InvariantCulture)} " +
+                                      $"{(chartLeft + chartWidth).ToString("0.##", CultureInfo.InvariantCulture)},{targetY.ToString("0.##", CultureInfo.InvariantCulture)}";
+        }
+        else
+        {
+            calorieTargetLinePoints = "";
+        }
+
+        var latestLogged = series.LastOrDefault(point => point.Calories > 0) ?? series.Last();
+        latestCaloriesText = $"{latestLogged.Calories} cal";
+        averageCaloriesText = $"{Math.Round(series.Average(point => (double)point.Calories)):0} cal";
     }
 
     private static string GetFriendlyGoalType(WeightGoalType goalType)
