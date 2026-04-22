@@ -1,5 +1,6 @@
 using HealthingHand.Data;
 using HealthingHand.Data.Persistence;
+using HealthingHand.Data.Stores;
 using HealthingHand.Web.Components;
 using HealthingHand.Web.Endpoints;
 using HealthingHand.Web.Services;
@@ -78,6 +79,8 @@ internal class Program // Personally, I prefer an explicit main method - CT
         builder.Services.AddScoped<IWeightService, WeightService>();
         builder.Services.AddScoped<IOcrService, OcrService>();
         builder.Services.AddScoped<IParser, Parser>();
+        builder.Services.AddScoped<IWeightGoalStore, WeightGoalStore>();
+        builder.Services.AddScoped<ICalorieRecommendationService, CalorieRecommendationService>();
 
         var app = builder.Build();
 

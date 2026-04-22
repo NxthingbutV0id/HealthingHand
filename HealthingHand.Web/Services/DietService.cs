@@ -12,7 +12,7 @@ public interface IDietService
 {
     Task<(bool Success, string? Error, int? MealId)> CreateMealAsync(DietMealInput input);
     Task<IReadOnlyList<DietMealListItem>> ListMealsAsync(DateTime from, DateTime to);
-    Task<DietSummaryDto> GetSummaryAsync(DateTime from, DateTime to);
+    Task<DietSummaryDto> GetSummaryAsync(DateTime from, DateTime to); // Note: Unused
     Task<DietSummaryDto> GetTodaySummaryAsync();
 }
 
@@ -179,12 +179,10 @@ public class DietService(
 
     private CalorieRecommendationDto? BuildCalorieRecommendation(WeightGoalEntry? weightGoal, float? latestWeightKg)
     {
-        if (weightGoal is null)
-            return null;
+        if (weightGoal is null) return null;
 
         var currentWeightKg = latestWeightKg ?? weightGoal.CurrentWeightKg;
-        if (currentWeightKg <= 0)
-            return null;
+        if (currentWeightKg <= 0) return null;
 
         var frequency = Enum.TryParse<ExerciseFrequency>(weightGoal.ExerciseFrequency, out var parsedFrequency)
             ? parsedFrequency
@@ -207,8 +205,7 @@ public class DietService(
 
     private static string BuildTargetDescription(WeightGoalEntry? weightGoal, CalorieRecommendationDto recommendation)
     {
-        if (weightGoal is null)
-            return recommendation.ReasoningSummary;
+        if (weightGoal is null) return recommendation.ReasoningSummary;
 
         var frequency = string.IsNullOrWhiteSpace(weightGoal.ExerciseFrequency)
             ? "moderate"

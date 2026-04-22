@@ -58,8 +58,7 @@ public class SleepService(ISleepStore sleeps, IHttpContextAccessor httpContextAc
     public async Task<(bool Success, string? Error)> DeleteAsync(int id)
     {
         var userId = GetCurrentUserId();
-        if (userId is null)
-            return (false, "Not signed in.");
+        if (userId is null) return (false, "Not signed in.");
 
         var existing = await sleeps.GetAsync(id);
         if (existing is null || existing.UserId != userId.Value)
@@ -72,8 +71,7 @@ public class SleepService(ISleepStore sleeps, IHttpContextAccessor httpContextAc
     public async Task<IReadOnlyList<SleepListItem>> ListHistoryAsync(DateOnly from, DateOnly to)
     {
         var userId = GetCurrentUserId();
-        if (userId is null)
-            return [];
+        if (userId is null) return [];
 
         var entries = await sleeps.ListForUserAsync(userId.Value, from, to);
 
